@@ -12,7 +12,6 @@ setup(
     # },
     install_requires=[
         "typer",
-        "pandas"
     ],
     entry_points="""
         [console_scripts]
