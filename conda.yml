@@ -1,0 +1,6 @@
+name: mutme
+channels:
+  - conda-forge        
+  - bioconda    
+dependencies:
+  - nextclade=3.18      

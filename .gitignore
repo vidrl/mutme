@@ -1,3 +1,9 @@
+# Testing directory
+testing/
+
+# VSCode settings
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
