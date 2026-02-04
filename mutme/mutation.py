@@ -84,6 +84,7 @@ class SequenceAnnotationReport:
     """
 
     seq_name: str
+    qc_status: str
     aa_substitutions: tuple[str, ...]
     aa_indels: tuple[str, ...]
     hits: tuple[SequenceMutationHit, ...]
@@ -94,9 +95,10 @@ def load_annotation_table(
     *,
     mutation_col: str = "mutation",
     normalize: Callable[[str], str] | None = None,
+    delimiter: str = ","
 ) -> dict[str, dict[str, str]]:
     """
-    Load an annotation TSV with a required `mutation` column and any number of
+    Load an annotation CSV with a required `mutation` column and any number of
     additional columns.
 
     Returns
@@ -120,22 +122,23 @@ def load_annotation_table(
 
     path = Path(annotation_tsv)
     if not path.exists() or not path.is_file():
-        raise FileNotFoundError(f"Annotation TSV not found: {path}")
+        raise FileNotFoundError(f"Annotation CSV not found: {path}")
 
     out: dict[str, dict[str, str]] = {}
 
     with path.open("r", newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f, delimiter="\t")
+        reader = csv.DictReader(f, delimiter=delimiter)
         if reader.fieldnames is None:
-            raise InputFormatError(f"Annotation TSV has no header row: {path}")
+            raise InputFormatError(f"Annotation CSV has no header row: {path}")
 
         fieldnames = list(reader.fieldnames)
         if mutation_col not in fieldnames:
-            raise InputFormatError(f"Annotation TSV missing required column '{mutation_col}': {path}")
+            raise InputFormatError(f"Annotation CSV missing required column '{mutation_col}': {path}")
 
         annotation_fields = [c for c in fieldnames if c != mutation_col]
         if not annotation_fields:
             # 0 is allowed, but it's usually accidental. We'll allow it but be explicit.
+            print("Warning: no annotation fields for provided in annotation file")
             pass
 
         for line_no, row in enumerate(reader, start=2):
@@ -160,10 +163,11 @@ def load_annotation_table(
 
 def compare_nextclade_to_annotations(
     nextclade_tsv: str | os.PathLike[str],
-    annotation_tsv: str | os.PathLike[str],
+    annotation_csv: str | os.PathLike[str],
     *,
     # Nextclade columns
     seq_name_col: str = "seqName",
+    qc_status_col: str = "qc.OverallStatus",
     aa_sub_col: str = "aaSubstitutions",
     aa_del_col: str = "aaDeletions",
     aa_ins_col: str = "aaInsertions",
@@ -171,11 +175,13 @@ def compare_nextclade_to_annotations(
     mutation_col: str = "mutation",
     # Optional normalization hook (applied to both sides)
     normalize: Callable[[str], str] | None = None,
+    # Optional delimiter for annotation file
+    delimiter: str = ","
 ) -> list[SequenceAnnotationReport]:
     """
-    Compare Nextclade AA substitutions/indels to an annotation table TSV.
+    Compare Nextclade AA substitutions/indels to an annotation table CSV.
 
-    The annotation TSV must contain a `mutation` column and may contain any number
+    The annotation CSV must contain a `mutation` column and may contain any number
     of additional columns with arbitrary headers (all treated as string annotations).
 
     Matching is performed by **exact string match** after optional normalization.
@@ -192,12 +198,13 @@ def compare_nextclade_to_annotations(
     """
     next_path = Path(nextclade_tsv)
     if not next_path.exists() or not next_path.is_file():
-        raise FileNotFoundError(f"Nextclade TSV not found: {next_path}")
+        raise FileNotFoundError(f"Nextclade output not found: {next_path}")
 
     annotations = load_annotation_table(
-        annotation_tsv,
+        annotation_csv,
         mutation_col=mutation_col,
         normalize=normalize,
+        delimiter=delimiter
     )
     annotation_keys = set(annotations.keys())
 
@@ -206,19 +213,21 @@ def compare_nextclade_to_annotations(
     with next_path.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
         if reader.fieldnames is None:
-            raise InputFormatError(f"Nextclade TSV has no header row: {next_path}")
+            raise InputFormatError(f"Nextclade output has no header row: {next_path}")
 
         required = {seq_name_col, aa_sub_col, aa_del_col, aa_ins_col}
         missing = required - set(reader.fieldnames)
         if missing:
             raise InputFormatError(
-                f"Nextclade TSV missing required columns {sorted(missing)}: {next_path}"
+                f"Nextclade output missing required columns {sorted(missing)}: {next_path}"
             )
 
         for line_no, row in enumerate(reader, start=2):
             seq_name = (row.get(seq_name_col) or "").strip()
             if not seq_name:
                 raise InputFormatError(f"Empty '{seq_name_col}' at {next_path}:{line_no}")
+            
+            qc_status = (row.get(qc_status_col) or "").strip()
 
             subs = _split_csv_cell(row.get(aa_sub_col))
             dels = _split_csv_cell(row.get(aa_del_col))
@@ -240,6 +249,7 @@ def compare_nextclade_to_annotations(
             reports.append(
                 SequenceAnnotationReport(
                     seq_name=seq_name,
+                    qc_status=qc_status,
                     aa_substitutions=tuple(sorted(subs)),
                     aa_indels=tuple(sorted(aa_indels)),
                     hits=tuple(hits),
