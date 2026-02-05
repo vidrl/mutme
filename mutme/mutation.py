@@ -5,7 +5,7 @@ import os
 
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Callable, Mapping, Iterable, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 class InputFormatError(ValueError):
     """Raised when an input TSV is missing required columns or is otherwise malformed."""
@@ -67,12 +67,15 @@ class SequenceMutationHit:
     Attributes
     ----------
     mutation:
-        Mutation string (e.g., 'N:R203K', 'S:214:EPE', 'N:E31-').
+        Mutation string in Nextclade format (e.g., 'N:R203K', 'S:214:EPE', 'N:E31-').
+    comments:
+        Comments if provided in the annotations table for this mutation.
     annotations:
         Mapping of annotation fields for this mutation.
     """
 
     mutation: str
+    comments: str
     annotations: Mapping[str, str]
 
 
@@ -165,6 +168,16 @@ def load_annotation_table(
 
         resolved_mutation_col = matches[0]
 
+
+        comments_matches = [c for c in fieldnames if c.casefold() == "comment"]
+        if len(comments_matches) > 1:
+            raise InputFormatError(
+                f"Ambiguous comment column: multiple headers match 'comment' case-insensitively: "
+                f"{comments_matches} in {path}"
+            )
+        resolved_comments_col: str | None = comments_matches[0] if comments_matches else None
+
+
         annotation_fields = [c for c in fieldnames if c != resolved_mutation_col]
         if not annotation_fields:
             print("Warning: no annotation fields provided in annotation file")
@@ -182,8 +195,10 @@ def load_annotation_table(
                 val = (row.get(col) or "").strip()
                 if not val:
                     continue
-                existing = bucket.get(col, "")
-                bucket[col] = _merge_field_value(existing, val)
+                
+                key = "comment" if (resolved_comments_col and col == resolved_comments_col) else col
+                existing = bucket.get(key, "")
+                bucket[key] = _merge_field_value(existing, val)
 
     return out
 
@@ -270,9 +285,24 @@ def compare_nextclade_to_annotations(
             all_aa = subs | aa_indels
 
             hits: list[SequenceMutationHit] = []
+
             for mut in sorted(all_aa):
-                if mut in annotation_keys:
-                    hits.append(SequenceMutationHit(mutation=mut, annotations=annotations[mut]))
+                if mut not in annotation_keys:
+                    continue
+
+                anno = annotations[mut]
+                mut_comment = (anno.get("comment") or "").strip()
+
+                # exclude comments from generic annotations
+                hit_annos = {k: v for k, v in anno.items() if k != "comment"}
+
+                hits.append(
+                    SequenceMutationHit(
+                        mutation=mut,
+                        comments=mut_comment,
+                        annotations=hit_annos,
+                    )
+                )
 
             reports.append(
                 SequenceAnnotationReport(
@@ -300,6 +330,8 @@ def write_long_format_table(
     include_detected_lists: bool = False,
     detected_subs_col: str = "detectedAaSubstitutions",
     detected_indels_col: str = "detectedAaIndels",
+    include_mutation_comments: bool = False,
+    comments_col: str = "comment",
     # Ordering / stability
     annotation_field_order: Sequence[str] | None = None,
     # Delimiter
@@ -348,11 +380,12 @@ def write_long_format_table(
     out_path = Path(output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Union all annotation fields across all hits.
+    # Union all annotation fields across hits (comments are now separate)
     all_fields: set[str] = set()
     for r in reports:
         for h in r.hits:
             all_fields.update(h.annotations.keys())
+
 
     # Determine annotation header order.
     if annotation_field_order is None:
@@ -367,6 +400,8 @@ def write_long_format_table(
     if include_detected_lists:
         header.extend([detected_subs_col, detected_indels_col])
     header.extend(anno_cols)
+    if include_mutation_comments:
+        header.append(comments_col) 
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=header, delimiter=delimiter, extrasaction="ignore")
@@ -382,19 +417,24 @@ def write_long_format_table(
                     if include_detected_lists:
                         row[detected_subs_col] = detected_subs
                         row[detected_indels_col] = detected_indels
-                    # annotation fields left blank
+                    if include_mutation_comments:
+                        row[comments_col] = ""
                     writer.writerow(row)
                 continue
 
+            
             for h in r.hits:
                 row = {seq_name_col: r.seq_name, seq_qc_col: r.qc_status, mutation_col: h.mutation}
+
                 if include_detected_lists:
                     row[detected_subs_col] = detected_subs
                     row[detected_indels_col] = detected_indels
 
-                # Fill annotation fields (missing -> empty)
                 for col in anno_cols:
                     row[col] = h.annotations.get(col, "")
+
+                if include_mutation_comments:
+                    row[comments_col] = h.comments
 
                 writer.writerow(row)
 

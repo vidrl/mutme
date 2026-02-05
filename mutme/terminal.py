@@ -31,10 +31,11 @@ def run(
     sequences: Path = typer.Option(..., "--sequences", "-s", exists=True, help="Input sequences FASTA"),
     reference: Path = typer.Option(..., "--reference", "-r", exists=True, help="Reference FASTA"),
     gff: Path = typer.Option(..., "--gff", "-g", exists=True, help="Annotation GFF3"),
-    annotations: Path = typer.Option(..., "--annotations", "-a", exists=True, help="Annotation CSV - must contain 'mutation' column that matches format of 'aaSubstitution', 'aaDeletion' or 'aaInsertion' from Nextclade"),
+    annotations: Path = typer.Option(..., "--annotations", "-a", exists=True, help="Annotation table - must contain 'mutation' column that matches format of 'aaSubstitution', 'aaDeletion' or 'aaInsertion' from Nextclade"),
     annotations_delimiter: str = typer.Option(",", "--annotations-delimiter", help="Annotation delimiter - default is comma-delimited for CSV"),
     output: Path = typer.Option(..., "--output", "-o", help="Name of output file: {output}.csv"),
     output_delimiter: str = typer.Option(",", "--output-delimiter", help="Annotation delimiter - default is comma-delimited for CSV"),
+    include_comments: bool = typer.Option(False, "--include-comments", "-c", help="Include comments in output table if present in annotations table"),
     alignment_preset: AlignmentPreset = typer.Option("default", "-p", "--alignment-preset", help="Nextclade alignment preset"),
     nextclade_bin: str = typer.Option("nextclade", "--nextclade-bin", help="Nextclade executable"),
     nextclade_extra_args: str = typer.Option("", "--nextclade-extra-args", help="Extra args passed to Nextclade"),
@@ -76,7 +77,8 @@ def run(
     write_long_format_table(
         reports,
         output=output,
-        delimiter=output_delimiter
+        delimiter=output_delimiter,
+        include_mutation_comments=include_comments
     )
 
     cleanup = cleanup_file(nextclade_output.tsv, keep=nextclade_keep_tsv, missing_ok=True)
