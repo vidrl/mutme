@@ -3,7 +3,7 @@ import typer
 
 from pathlib import Path
 
-from .utils import run_command, run_nextclade, write_rows_to_csv, write_command_log, log_command_result, AlignmentPreset, DatabasePreset, CommandExecutionError
+from .utils import run_command, run_nextclade, write_rows_to_csv, log_command_result, cleanup_file, AlignmentPreset, DatabasePreset, CommandExecutionError
 from .mutation import compare_nextclade_to_annotations, write_long_format_table
 from .presets import transform_spike_mab_resistance_table, transform_3clpro_inhibitor_resistance_table, transform_rdrp_inhibitor_resistance_table
 
@@ -77,6 +77,13 @@ def run(
         output=output,
         delimiter=output_delimiter
     )
+
+    cleanup = cleanup_file(nextclade_output.tsv, keep=False, missing_ok=True)
+    if cleanup.removed:
+        typer.echo(f"Cleaned up Nextclade TSV: {cleanup.path}")
+    else:
+        # Failure of cleanup is not fatal
+        typer.echo(f"Nextclade TSV cleanup: {cleanup.reason} ({cleanup.path})")
 
     typer.echo(f"Done → {output}")
 

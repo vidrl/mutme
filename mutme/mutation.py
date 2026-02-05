@@ -376,8 +376,6 @@ def write_long_format_table(
             detected_subs = ",".join(r.aa_substitutions)
             detected_indels = ",".join(r.aa_indels)
 
-            print(r.qc_status)
-
             if not r.hits:
                 if include_sequences_with_no_hits:
                     row = {seq_name_col: r.seq_name, seq_qc_col: r.qc_status, mutation_col: ""}

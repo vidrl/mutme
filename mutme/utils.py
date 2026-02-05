@@ -588,3 +588,72 @@ def log_command_result(
 
     write_command_log(result, log_path)
 
+
+
+@dataclass(frozen=True, slots=True)
+class CleanupReport:
+    """
+    Outcome of a cleanup attempt.
+
+    Attributes
+    ----------
+    path:
+        Path that was targeted for cleanup.
+    removed:
+        True if the file was deleted.
+    reason:
+        Human-readable explanation (e.g. 'deleted', 'missing', 'kept', 'permission denied').
+    """
+    path: Path
+    removed: bool
+    reason: str
+
+
+def cleanup_file(
+    path: str | os.PathLike[str],
+    *,
+    keep: bool = False,
+    missing_ok: bool = True,
+) -> CleanupReport:
+    """
+    Delete a file if it exists, optionally keeping it.
+
+    Parameters
+    ----------
+    path:
+        File path to remove.
+    keep:
+        If True, do not delete; return a report stating it was kept.
+    missing_ok:
+        If True, a missing file is not treated as an error.
+
+    Returns
+    -------
+    CleanupReport
+        Indicates whether deletion occurred and why.
+
+    Notes
+    -----
+    - This function never raises for missing files when missing_ok=True.
+    - Permission errors or other OS errors are captured into the report.
+    """
+    p = Path(path)
+
+    if keep:
+        return CleanupReport(path=p, removed=False, reason="kept")
+
+    if not p.exists():
+        if missing_ok:
+            return CleanupReport(path=p, removed=False, reason="missing")
+        return CleanupReport(path=p, removed=False, reason="missing (missing_ok=False)")
+
+    if not p.is_file():
+        return CleanupReport(path=p, removed=False, reason="not a file")
+
+    try:
+        p.unlink()
+        return CleanupReport(path=p, removed=True, reason="deleted")
+    except PermissionError as e:
+        return CleanupReport(path=p, removed=False, reason=f"permission denied: {e}")
+    except OSError as e:
+        return CleanupReport(path=p, removed=False, reason=f"os error: {e}")
