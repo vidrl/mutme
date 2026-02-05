@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 import subprocess
 from pathlib import Path
@@ -9,7 +8,6 @@ import pytest
 
 from mutme.utils import (
     CommandExecutionError,
-    CommandResult,
     run_command,
 )
 
