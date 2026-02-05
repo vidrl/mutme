@@ -38,6 +38,7 @@ def run(
     alignment_preset: AlignmentPreset = typer.Option("default", "-p", "--alignment-preset", help="Nextclade alignment preset"),
     nextclade_bin: str = typer.Option("nextclade", "--nextclade-bin", help="Nextclade executable"),
     nextclade_extra_args: str = typer.Option("", "--nextclade-extra-args", help="Extra args passed to Nextclade"),
+    nextclade_keep_tsv: bool = typer.Option(False, "--nextclade-keep-tsv", help="Keep the Nextclade TSV output in the current working directory on completion"),
 ) -> None:
     """
     Run Nextclade (reference + GFF), match AA mutations against an annotation table,
@@ -78,12 +79,12 @@ def run(
         delimiter=output_delimiter
     )
 
-    cleanup = cleanup_file(nextclade_output.tsv, keep=False, missing_ok=True)
+    cleanup = cleanup_file(nextclade_output.tsv, keep=nextclade_keep_tsv, missing_ok=True)
     if cleanup.removed:
-        typer.echo(f"Cleaned up Nextclade TSV: {cleanup.path}")
+        typer.echo(f"Nextclade output removed: {cleanup.path}")
     else:
         # Failure of cleanup is not fatal
-        typer.echo(f"Nextclade TSV cleanup: {cleanup.reason} ({cleanup.path})")
+        typer.echo(f"Nextclade cleanup: {cleanup.reason} ({cleanup.path})")
 
     typer.echo(f"Done → {output}")
 
