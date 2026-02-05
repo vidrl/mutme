@@ -3,9 +3,16 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence, Literal
+
+import csv
+
+from pathlib import Path
+from typing import Iterable, Mapping, Any
+
 
 DEFAULT_MUTATION_COLUMNS = (
     "seqName",
@@ -20,11 +27,10 @@ DEFAULT_MUTATION_COLUMNS = (
 
 
 
+DatabasePreset = Literal["sars-cov-2-mab-resistance", "sars-cov-2-3clpro-inhibitor", "sars-cov-2-rdrp-inhibitor"]
 AlignmentPreset = Literal["default", "high-diversity", "short-sequences"]
-
-
-
 QualityControlStatus = Literal["good", "mediocre", "bad"]
+
 
 class CommandExecutionError(RuntimeError):
     """
@@ -380,3 +386,205 @@ def run_nextclade(
         )
 
     return NextcladeTabularOutput(tsv=out), result
+
+
+
+
+def write_rows_to_delimited_file(
+    rows: Iterable[Mapping[str, Any]],
+    destination: str | Path,
+    *,
+    delimiter: str,
+    include_header: bool = True,
+) -> None:
+    """
+    Write row-oriented data to a delimited text file (CSV/TSV).
+
+    This is a generic helper that takes an iterable of mapping objects
+    (e.g. dicts) and writes them to disk using the specified delimiter.
+    Column order is inferred from the first row.
+
+    Parameters
+    ----------
+    rows:
+        Iterable of row mappings. Each mapping represents one output row,
+        where keys are column names and values are cell contents.
+        All rows are expected to share the same keys.
+    destination:
+        Output file path.
+    delimiter:
+        Field delimiter to use (e.g. "," for CSV, "\\t" for TSV).
+    include_header:
+        Whether to write the header row. Defaults to True.
+
+    Raises
+    ------
+    ValueError
+        If `rows` is empty.
+    IOError
+        If the file cannot be written.
+
+    Notes
+    -----
+    - Values are written exactly as provided (converted to str by csv).
+    - Newlines are handled according to csv module best practices.
+    """
+    rows = list(rows)
+    if not rows:
+        raise ValueError("No rows provided; refusing to write an empty file.")
+
+    fieldnames = list(rows[0].keys())
+
+    with open(destination, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=fieldnames,
+            delimiter=delimiter,
+            extrasaction="ignore",
+        )
+        if include_header:
+            writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_rows_to_csv(
+    rows: Iterable[Mapping[str, Any]],
+    destination: str | Path,
+    *,
+    include_header: bool = True,
+) -> None:
+    """
+    Write transformed spike mAb resistance data to a CSV file.
+
+    This is a thin wrapper around `write_rows_to_delimited_file`
+    with delimiter set to comma.
+
+    Parameters
+    ----------
+    rows:
+        Iterable of row mappings produced by
+        `transform_spike_mab_resistance_csv`.
+    destination:
+        Output CSV file path.
+    include_header:
+        Whether to write the header row. Defaults to True.
+    """
+    write_rows_to_delimited_file(
+        rows,
+        destination,
+        delimiter=",",
+        include_header=include_header,
+    )
+
+
+def write_rows_to_tsv(
+    rows: Iterable[Mapping[str, Any]],
+    destination: str | Path,
+    *,
+    include_header: bool = True,
+) -> None:
+    """
+    Write transformed spike mAb resistance data to a TSV file.
+
+    This is a thin wrapper around `write_rows_to_delimited_file`
+    with delimiter set to tab.
+
+    Parameters
+    ----------
+    rows:
+        Iterable of row mappings produced by
+        `transform_spike_mab_resistance_csv`.
+    destination:
+        Output TSV file path.
+    include_header:
+        Whether to write the header row. Defaults to True.
+    """
+    write_rows_to_delimited_file(
+        rows,
+        destination,
+        delimiter="\\t",
+        include_header=include_header,
+    )
+
+def write_command_log(
+    result: CommandResult,
+    log_path: str | Path,
+    *,
+    include_stdout: bool = True,
+    include_stderr: bool = True,
+) -> None:
+    """
+    Write a detailed command execution log to disk.
+
+    Parameters
+    ----------
+    result:
+        CommandResult returned by run_command.
+    log_path:
+        Destination path for the log file.
+    include_stdout:
+        Whether to include stdout in the log.
+    include_stderr:
+        Whether to include stderr in the log.
+
+    Notes
+    -----
+    - The log format is plain text and stable.
+    - This function never raises due to command failure; it only raises
+      on I/O errors.
+    """
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with log_path.open("w", encoding="utf-8") as fh:
+        fh.write("=== COMMAND EXECUTION LOG ===\n\n")
+        fh.write(f"Command      : {' '.join(result.args)}\n")
+        fh.write(f"Return code  : {result.returncode}\n")
+        fh.write(f"Working dir : {result.cwd or '<inherit>'}\n\n")
+
+        if include_stdout:
+            fh.write("=== STDOUT ===\n")
+            fh.write(result.stdout or "<empty>\n")
+            fh.write("\n")
+
+        if include_stderr:
+            fh.write("=== STDERR ===\n")
+            fh.write(result.stderr or "<empty>\n")
+            fh.write("\n")
+
+def log_command_result(
+    result_or_error: CommandResult | CommandExecutionError,
+    log_path: str | Path,
+) -> None:
+    """
+    Write a command execution log from either a CommandResult or
+    a CommandExecutionError.
+
+    Parameters
+    ----------
+    result_or_error:
+        Either:
+        - CommandResult (successful or non-checked failure), or
+        - CommandExecutionError carrying a result.
+    log_path:
+        Destination log file path.
+
+    Notes
+    -----
+    - If the error does not contain a result (e.g. command not found),
+      a minimal log is written.
+    """
+    if isinstance(result_or_error, CommandExecutionError):
+        result = result_or_error.result
+        if result is None:
+            # Minimal log for failures before execution
+            Path(log_path).write_text(
+                f"Command failed before execution:\n{result_or_error}\n",
+                encoding="utf-8",
+            )
+            return
+    else:
+        result = result_or_error
+
+    write_command_log(result, log_path)
+

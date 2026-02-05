@@ -7,7 +7,6 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Mapping, Iterable, Sequence
 
-
 class InputFormatError(ValueError):
     """Raised when an input TSV is missing required columns or is otherwise malformed."""
 
@@ -95,11 +94,26 @@ def load_annotation_table(
     *,
     mutation_col: str = "mutation",
     normalize: Callable[[str], str] | None = None,
-    delimiter: str = ","
+    delimiter: str = ",",
 ) -> dict[str, dict[str, str]]:
     """
-    Load an annotation CSV with a required `mutation` column and any number of
+    Load an annotation CSV/TSV with a required mutation column and any number of
     additional columns.
+
+    The mutation column is resolved case-insensitively, so either "mutation" or
+    "Mutation" (or any other casing) will be accepted.
+
+    Parameters
+    ----------
+    annotation_tsv:
+        Path to the annotation file.
+    mutation_col:
+        Preferred name of the mutation column. Resolution is case-insensitive:
+        e.g. "mutation" will match a header of "Mutation".
+    normalize:
+        Optional normalizer applied to each mutation string after stripping.
+    delimiter:
+        Delimiter used by the file ("," for CSV, "\\t" for TSV, etc).
 
     Returns
     -------
@@ -115,50 +129,64 @@ def load_annotation_table(
     Raises
     ------
     FileNotFoundError:
-        If the TSV does not exist.
+        If the file does not exist.
     InputFormatError:
-        If header is missing or `mutation` column is missing/empty.
+        If header is missing or the mutation column is missing/empty.
     """
-
     path = Path(annotation_tsv)
     if not path.exists() or not path.is_file():
-        raise FileNotFoundError(f"Annotation CSV not found: {path}")
+        raise FileNotFoundError(f"Annotation file not found: {path}")
 
     out: dict[str, dict[str, str]] = {}
 
     with path.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter=delimiter)
         if reader.fieldnames is None:
-            raise InputFormatError(f"Annotation CSV has no header row: {path}")
+            raise InputFormatError(f"Annotation file has no header row: {path}")
 
         fieldnames = list(reader.fieldnames)
-        if mutation_col not in fieldnames:
-            raise InputFormatError(f"Annotation CSV missing required column '{mutation_col}': {path}")
 
-        annotation_fields = [c for c in fieldnames if c != mutation_col]
+        # Resolve mutation column case-insensitively.
+        # If there are multiple headers differing only by case, fail loudly.
+        target = mutation_col.strip()
+        if not target:
+            raise ValueError("mutation_col must be a non-empty string")
+
+        matches = [c for c in fieldnames if c.casefold() == target.casefold()]
+        if not matches:
+            raise InputFormatError(
+                f"Annotation file missing required column '{mutation_col}' (case-insensitive): {path}"
+            )
+        if len(matches) > 1:
+            raise InputFormatError(
+                f"Ambiguous mutation column: multiple headers match '{mutation_col}' case-insensitively: "
+                f"{matches} in {path}"
+            )
+
+        resolved_mutation_col = matches[0]
+
+        annotation_fields = [c for c in fieldnames if c != resolved_mutation_col]
         if not annotation_fields:
-            # 0 is allowed, but it's usually accidental. We'll allow it but be explicit.
-            print("Warning: no annotation fields for provided in annotation file")
-            pass
+            print("Warning: no annotation fields provided in annotation file")
 
         for line_no, row in enumerate(reader, start=2):
-            raw_mut = (row.get(mutation_col) or "").strip()
+            raw_mut = (row.get(resolved_mutation_col) or "").strip()
             if not raw_mut:
-                raise InputFormatError(f"Empty '{mutation_col}' at {path}:{line_no}")
+                raise InputFormatError(f"Empty '{resolved_mutation_col}' at {path}:{line_no}")
 
             mut = normalize(raw_mut) if normalize else raw_mut
 
-            if mut not in out:
-                out[mut] = {}
+            bucket = out.setdefault(mut, {})
 
             for col in annotation_fields:
                 val = (row.get(col) or "").strip()
                 if not val:
                     continue
-                existing = out[mut].get(col, "")
-                out[mut][col] = _merge_field_value(existing, val)
+                existing = bucket.get(col, "")
+                bucket[col] = _merge_field_value(existing, val)
 
     return out
+
 
 
 def compare_nextclade_to_annotations(
@@ -167,7 +195,7 @@ def compare_nextclade_to_annotations(
     *,
     # Nextclade columns
     seq_name_col: str = "seqName",
-    qc_status_col: str = "qc.OverallStatus",
+    qc_status_col: str = "qc.overallStatus",
     aa_sub_col: str = "aaSubstitutions",
     aa_del_col: str = "aaDeletions",
     aa_ins_col: str = "aaInsertions",
@@ -260,12 +288,13 @@ def compare_nextclade_to_annotations(
 
 
 
-def write_long_format_hits_tsv(
+def write_long_format_table(
     reports: Sequence[SequenceAnnotationReport],
-    out_tsv: str | Path,
+    output: str | Path,
     *,
     include_sequences_with_no_hits: bool = False,
     seq_name_col: str = "seqName",
+    seq_qc_col: str = "seqQuality",
     mutation_col: str = "mutation",
     # Optional: add these for auditing/debugging
     include_detected_lists: bool = False,
@@ -273,9 +302,11 @@ def write_long_format_hits_tsv(
     detected_indels_col: str = "detectedAaIndels",
     # Ordering / stability
     annotation_field_order: Sequence[str] | None = None,
+    # Delimiter
+    delimiter: str = ","
 ) -> Path:
     """
-    Write a flat TSV in *long* format: one row per (sequence, hit mutation).
+    Write a flat CSV in *long* format: one row per (sequence, hit mutation).
 
     Output columns
     --------------
@@ -314,7 +345,7 @@ def write_long_format_hits_tsv(
     - For a stable, deterministic output, headers are sorted unless an explicit
       `annotation_field_order` is provided.
     """
-    out_path = Path(out_tsv)
+    out_path = Path(output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Union all annotation fields across all hits.
@@ -332,26 +363,24 @@ def write_long_format_hits_tsv(
         anno_cols = specified + remaining
 
     # Build full header.
-    header: list[str] = [seq_name_col, mutation_col]
+    header: list[str] = [seq_name_col, seq_qc_col, mutation_col]
     if include_detected_lists:
         header.extend([detected_subs_col, detected_indels_col])
     header.extend(anno_cols)
 
-    def _join(items: Iterable[str]) -> str:
-        # deterministic, no spaces
-        return ",".join(items)
-
     with out_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=header, delimiter="\t", extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=header, delimiter=delimiter, extrasaction="ignore")
         writer.writeheader()
 
         for r in reports:
-            detected_subs = _join(r.aa_substitutions)
-            detected_indels = _join(r.aa_indels)
+            detected_subs = ",".join(r.aa_substitutions)
+            detected_indels = ",".join(r.aa_indels)
+
+            print(r.qc_status)
 
             if not r.hits:
                 if include_sequences_with_no_hits:
-                    row = {seq_name_col: r.seq_name, mutation_col: ""}
+                    row = {seq_name_col: r.seq_name, seq_qc_col: r.qc_status, mutation_col: ""}
                     if include_detected_lists:
                         row[detected_subs_col] = detected_subs
                         row[detected_indels_col] = detected_indels
@@ -360,7 +389,7 @@ def write_long_format_hits_tsv(
                 continue
 
             for h in r.hits:
-                row = {seq_name_col: r.seq_name, mutation_col: h.mutation}
+                row = {seq_name_col: r.seq_name, seq_qc_col: r.qc_status, mutation_col: h.mutation}
                 if include_detected_lists:
                     row[detected_subs_col] = detected_subs
                     row[detected_indels_col] = detected_indels
