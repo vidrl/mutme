@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,9 @@ def py_cmd(code: str) -> list[str]:
 
 
 def test_success_captures_stdout_and_stderr():
-    result = run_command(py_cmd('import sys; print("out"); print("err", file=sys.stderr)'))
+    result = run_command(
+        py_cmd('import sys; print("out"); print("err", file=sys.stderr)')
+    )
     assert result.returncode == 0
     assert result.stdout.strip() == "out"
     assert result.stderr.strip() == "err"
@@ -131,7 +133,9 @@ def test_file_not_found_is_wrapped(monkeypatch: pytest.MonkeyPatch):
         run_command(["definitely-not-a-real-command-xyz"])
 
 
-def test_timeout_is_wrapped_and_includes_partial_result(monkeypatch: pytest.MonkeyPatch):
+def test_timeout_is_wrapped_and_includes_partial_result(
+    monkeypatch: pytest.MonkeyPatch,
+):
     # Simulate subprocess.TimeoutExpired with partial stdout/stderr
     def boom(*args, **kwargs):
         raise subprocess.TimeoutExpired(

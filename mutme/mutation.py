@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import csv
 import os
-
-from pathlib import Path
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Callable, Mapping, Optional, Sequence
+from pathlib import Path
+
 
 class InputFormatError(ValueError):
     """Raised when an input TSV is missing required columns or is otherwise malformed."""
@@ -168,15 +168,15 @@ def load_annotation_table(
 
         resolved_mutation_col = matches[0]
 
-
         comments_matches = [c for c in fieldnames if c.casefold() == "comment"]
         if len(comments_matches) > 1:
             raise InputFormatError(
                 f"Ambiguous comment column: multiple headers match 'comment' case-insensitively: "
                 f"{comments_matches} in {path}"
             )
-        resolved_comments_col: str | None = comments_matches[0] if comments_matches else None
-
+        resolved_comments_col: str | None = (
+            comments_matches[0] if comments_matches else None
+        )
 
         annotation_fields = [c for c in fieldnames if c != resolved_mutation_col]
         if not annotation_fields:
@@ -185,7 +185,9 @@ def load_annotation_table(
         for line_no, row in enumerate(reader, start=2):
             raw_mut = (row.get(resolved_mutation_col) or "").strip()
             if not raw_mut:
-                raise InputFormatError(f"Empty '{resolved_mutation_col}' at {path}:{line_no}")
+                raise InputFormatError(
+                    f"Empty '{resolved_mutation_col}' at {path}:{line_no}"
+                )
 
             mut = normalize(raw_mut) if normalize else raw_mut
 
@@ -195,13 +197,16 @@ def load_annotation_table(
                 val = (row.get(col) or "").strip()
                 if not val:
                     continue
-                
-                key = "comment" if (resolved_comments_col and col == resolved_comments_col) else col
+
+                key = (
+                    "comment"
+                    if (resolved_comments_col and col == resolved_comments_col)
+                    else col
+                )
                 existing = bucket.get(key, "")
                 bucket[key] = _merge_field_value(existing, val)
 
     return out
-
 
 
 def compare_nextclade_to_annotations(
@@ -219,7 +224,7 @@ def compare_nextclade_to_annotations(
     # Optional normalization hook (applied to both sides)
     normalize: Callable[[str], str] | None = None,
     # Optional delimiter for annotation file
-    delimiter: str = ","
+    delimiter: str = ",",
 ) -> list[SequenceAnnotationReport]:
     """
     Compare Nextclade AA substitutions/indels to an annotation table CSV.
@@ -247,7 +252,7 @@ def compare_nextclade_to_annotations(
         annotation_csv,
         mutation_col=mutation_col,
         normalize=normalize,
-        delimiter=delimiter
+        delimiter=delimiter,
     )
     annotation_keys = set(annotations.keys())
 
@@ -268,8 +273,10 @@ def compare_nextclade_to_annotations(
         for line_no, row in enumerate(reader, start=2):
             seq_name = (row.get(seq_name_col) or "").strip()
             if not seq_name:
-                raise InputFormatError(f"Empty '{seq_name_col}' at {next_path}:{line_no}")
-            
+                raise InputFormatError(
+                    f"Empty '{seq_name_col}' at {next_path}:{line_no}"
+                )
+
             qc_status = (row.get(qc_status_col) or "").strip()
 
             subs = _split_csv_cell(row.get(aa_sub_col))
@@ -317,7 +324,6 @@ def compare_nextclade_to_annotations(
     return reports
 
 
-
 def write_long_format_table(
     reports: Sequence[SequenceAnnotationReport],
     output: str | Path,
@@ -335,7 +341,7 @@ def write_long_format_table(
     # Ordering / stability
     annotation_field_order: Sequence[str] | None = None,
     # Delimiter
-    delimiter: str = ","
+    delimiter: str = ",",
 ) -> Path:
     """
     Write a flat CSV in *long* format: one row per (sequence, hit mutation).
@@ -386,7 +392,6 @@ def write_long_format_table(
         for h in r.hits:
             all_fields.update(h.annotations.keys())
 
-
     # Determine annotation header order.
     if annotation_field_order is None:
         anno_cols = sorted(all_fields)
@@ -401,10 +406,12 @@ def write_long_format_table(
         header.extend([detected_subs_col, detected_indels_col])
     header.extend(anno_cols)
     if include_mutation_comments:
-        header.append(comments_col) 
+        header.append(comments_col)
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=header, delimiter=delimiter, extrasaction="ignore")
+        writer = csv.DictWriter(
+            f, fieldnames=header, delimiter=delimiter, extrasaction="ignore"
+        )
         writer.writeheader()
 
         for r in reports:
@@ -413,7 +420,11 @@ def write_long_format_table(
 
             if not r.hits:
                 if include_sequences_with_no_hits:
-                    row = {seq_name_col: r.seq_name, seq_qc_col: r.qc_status, mutation_col: ""}
+                    row = {
+                        seq_name_col: r.seq_name,
+                        seq_qc_col: r.qc_status,
+                        mutation_col: "",
+                    }
                     if include_detected_lists:
                         row[detected_subs_col] = detected_subs
                         row[detected_indels_col] = detected_indels
@@ -422,9 +433,12 @@ def write_long_format_table(
                     writer.writerow(row)
                 continue
 
-            
             for h in r.hits:
-                row = {seq_name_col: r.seq_name, seq_qc_col: r.qc_status, mutation_col: h.mutation}
+                row = {
+                    seq_name_col: r.seq_name,
+                    seq_qc_col: r.qc_status,
+                    mutation_col: h.mutation,
+                }
 
                 if include_detected_lists:
                     row[detected_subs_col] = detected_subs

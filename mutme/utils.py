@@ -1,18 +1,13 @@
 from __future__ import annotations
 
+import csv
 import os
 import shlex
 import subprocess
-
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence, Literal
-
-import csv
-
-from pathlib import Path
-from typing import Iterable, Mapping, Any
-
+from typing import Any, Literal
 
 DEFAULT_MUTATION_COLUMNS = (
     "seqName",
@@ -26,8 +21,11 @@ DEFAULT_MUTATION_COLUMNS = (
 )
 
 
-
-DatabasePreset = Literal["sars-cov-2-mab-resistance", "sars-cov-2-3clpro-inhibitor", "sars-cov-2-rdrp-inhibitor"]
+DatabasePreset = Literal[
+    "sars-cov-2-mab-resistance",
+    "sars-cov-2-3clpro-inhibitor",
+    "sars-cov-2-rdrp-inhibitor",
+]
 AlignmentPreset = Literal["default", "high-diversity", "short-sequences"]
 QualityControlStatus = Literal["good", "mediocre", "bad"]
 
@@ -40,7 +38,7 @@ class CommandExecutionError(RuntimeError):
     inspect stderr/stdout without re-running anything.
     """
 
-    def __init__(self, message: str, result: "CommandResult | None" = None) -> None:
+    def __init__(self, message: str, result: CommandResult | None = None) -> None:
         super().__init__(message)
         self.result = result
 
@@ -224,7 +222,9 @@ def run_command(
     input_data: str | bytes | None = stdin
     if input_data is not None:
         if text and isinstance(input_data, bytes):
-            raise TypeError("stdin is bytes but text=True; pass a str or set text=False")
+            raise TypeError(
+                "stdin is bytes but text=True; pass a str or set text=False"
+            )
         if (not text) and isinstance(input_data, str):
             raise TypeError("stdin is str but text=False; pass bytes or set text=True")
 
@@ -248,9 +248,17 @@ def run_command(
         stdout = ""
         stderr = ""
         if getattr(e, "stdout", None) is not None:
-            stdout = e.stdout.decode() if isinstance(e.stdout, (bytes, bytearray)) else str(e.stdout)
+            stdout = (
+                e.stdout.decode()
+                if isinstance(e.stdout, (bytes, bytearray))
+                else str(e.stdout)
+            )
         if getattr(e, "stderr", None) is not None:
-            stderr = e.stderr.decode() if isinstance(e.stderr, (bytes, bytearray)) else str(e.stderr)
+            stderr = (
+                e.stderr.decode()
+                if isinstance(e.stderr, (bytes, bytearray))
+                else str(e.stderr)
+            )
 
         partial = CommandResult(
             args=args_tuple,
@@ -268,8 +276,12 @@ def run_command(
     result = CommandResult(
         args=args_tuple,
         returncode=completed.returncode,
-        stdout=completed.stdout if (capture_output and completed.stdout is not None) else "",
-        stderr=completed.stderr if (capture_output and completed.stderr is not None) else "",
+        stdout=completed.stdout
+        if (capture_output and completed.stdout is not None)
+        else "",
+        stderr=completed.stderr
+        if (capture_output and completed.stderr is not None)
+        else "",
         cwd=cwd_str,
     )
 
@@ -286,6 +298,7 @@ def run_command(
 @dataclass(frozen=True, slots=True)
 class NextcladeTabularOutput:
     """Paths to tabular outputs produced by Nextclade."""
+
     tsv: Path
 
 
@@ -301,7 +314,7 @@ def run_nextclade(
     extra_args: Sequence[str] = (),
     env: Mapping[str, str] | None = None,
     timeout_s: float | None = None,
-) -> tuple[NextcladeTabularOutput, "CommandResult"]:
+) -> tuple[NextcladeTabularOutput, CommandResult]:
     """
     Run Nextclade (v3.x) *without a dataset*, using only reference FASTA + GFF3 annotation,
     and write a TSV suitable for mutation extraction.
@@ -343,7 +356,11 @@ def run_nextclade(
     gff = Path(annotation_gff3)
     out = Path(out_tsv)
 
-    for p, label in [(seq, "sequences_fasta"), (ref, "reference_fasta"), (gff, "annotation_gff3")]:
+    for p, label in [
+        (seq, "sequences_fasta"),
+        (ref, "reference_fasta"),
+        (gff, "annotation_gff3"),
+    ]:
         if not p.exists():
             raise FileNotFoundError(f"{label} not found: {p}")
         if not p.is_file():
@@ -357,10 +374,14 @@ def run_nextclade(
     args: list[str] = [
         nextclade_bin,
         "run",
-        "--input-ref", str(ref),
-        "--input-annotation", str(gff),
-        "--alignment-preset", alignment_preset,
-        "--output-tsv", str(out),
+        "--input-ref",
+        str(ref),
+        "--input-annotation",
+        str(gff),
+        "--alignment-preset",
+        alignment_preset,
+        "--output-tsv",
+        str(out),
         str(seq),
     ]
 
@@ -386,8 +407,6 @@ def run_nextclade(
         )
 
     return NextcladeTabularOutput(tsv=out), result
-
-
 
 
 def write_rows_to_delimited_file(
@@ -506,6 +525,7 @@ def write_rows_to_tsv(
         include_header=include_header,
     )
 
+
 def write_command_log(
     result: CommandResult,
     log_path: str | Path,
@@ -552,6 +572,7 @@ def write_command_log(
             fh.write(result.stderr or "<empty>\n")
             fh.write("\n")
 
+
 def log_command_result(
     result_or_error: CommandResult | CommandExecutionError,
     log_path: str | Path,
@@ -589,7 +610,6 @@ def log_command_result(
     write_command_log(result, log_path)
 
 
-
 @dataclass(frozen=True, slots=True)
 class CleanupReport:
     """
@@ -604,6 +624,7 @@ class CleanupReport:
     reason:
         Human-readable explanation (e.g. 'deleted', 'missing', 'kept', 'permission denied').
     """
+
     path: Path
     removed: bool
     reason: str

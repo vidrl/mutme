@@ -2,7 +2,6 @@
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
-
 [project]
 name = "mutme"
 version = "0.1.0"
@@ -15,21 +14,42 @@ authors = [
   { name = "Eike J. Steinig", email = "eike.steinig@mh.org.au" }
 ]
 
-
 dependencies = [
   "typer==0.21.1"
 ]
 
-
 [project.optional-dependencies]
 test = [
-  "pytest>=8.0"
+  "pytest>=9.0"
 ]
-
+dev = [
+  "ruff>=0.15.0",
+]
 
 [project.scripts]
 mutme = "mutme.terminal:app"
 
-
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+fix = false
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "F",  # pyflakes
+  "I",  # import sorting
+  "UP", # pyupgrade
+]
+
+ignore = [
+  "E501", # line length (handled by formatter if you use one)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

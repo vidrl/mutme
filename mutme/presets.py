@@ -1,45 +1,47 @@
 """
 Example preset transformation functions for:
-    - Stanford Database 
+    - Stanford Database
 """
 
 from __future__ import annotations
 
 import csv
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Iterable, Mapping, Any
-
+from typing import IO, Any
 
 #: Canonical “full” names used for output columns.
 MAB_ABBREVIATIONS: dict[str, str] = {
-    "BAM": "Bamlanivimab",   # LY-CoV555 / LY3819253
-    "ETE": "Etesevimab",     # LY-CoV016 / JS016 / CB6
-    "CAS": "Casirivimab",    # REGN10933
-    "IMD": "Imdevimab",      # REGN10987
-    "CIL": "Cilgavimab",     # COV2-2130 / AZD1061
-    "TIX": "Tixagevimab",    # COV2-2196 / AZD8895
-    "SOT": "Sotrovimab",     # Vir-7831 / S309
-    "BEB": "Bebtelovimab",   # LY-CoV1404 / LY3853113
-    "REG": "Regdanvimab",    # CT-P59
-    "AMU": "Amubarvimab",    # BRII-196 / P2C-1f11
-    "ROM": "Romlusevimab",   # BRII-198 / P2B-1G5
-    "ADI": "Adintrevimab",   # ADG20 / ADG-2
+    "BAM": "Bamlanivimab",  # LY-CoV555 / LY3819253
+    "ETE": "Etesevimab",  # LY-CoV016 / JS016 / CB6
+    "CAS": "Casirivimab",  # REGN10933
+    "IMD": "Imdevimab",  # REGN10987
+    "CIL": "Cilgavimab",  # COV2-2130 / AZD1061
+    "TIX": "Tixagevimab",  # COV2-2196 / AZD8895
+    "SOT": "Sotrovimab",  # Vir-7831 / S309
+    "BEB": "Bebtelovimab",  # LY-CoV1404 / LY3853113
+    "REG": "Regdanvimab",  # CT-P59
+    "AMU": "Amubarvimab",  # BRII-196 / P2C-1f11
+    "ROM": "Romlusevimab",  # BRII-198 / P2B-1G5
+    "ADI": "Adintrevimab",  # ADG20 / ADG-2
 }
 
 INH_ABBREVIATIONS: dict[str, str] = {
     "NTV": "Nirmatrelvir",  # PAXLovid / PF-07321332
-    "ENS": "Ensitrelvir",   # Xocova / S-217622
+    "ENS": "Ensitrelvir",  # Xocova / S-217622
 }
 
 RDRP_INH_ABBREVIATIONS: dict[str, str] = {
     "RDV": "Remdesivir",  # Veklury / GS-5734
 }
 
+
 @dataclass(frozen=True)
 class MabColumns:
     """Resolved column names for one mAb in the source table."""
+
     abbrev: str
     full_name: str
     fold_col: str
@@ -53,6 +55,7 @@ _DMS_RE = re.compile(r"^\s*([A-Z]{3})\s*:\s*dms\s*$")
 @dataclass(frozen=True)
 class InhibitorColumns:
     """Resolved column names for one inhibitor in the source table."""
+
     abbrev: str
     full_name: str
     fold_col: str
@@ -62,9 +65,11 @@ class InhibitorColumns:
 _INH_FOLD_RE = re.compile(r"^\s*([A-Z]{3})\s*:\s*fold\s*$")
 _INH_POCKET_RE = re.compile(r"^\s*([A-Z]{3})\s*:\s*pocket\s*$")
 
+
 @dataclass(frozen=True)
 class RdRpInhibitorColumns:
     """Resolved column names for one RdRP inhibitor in the source table."""
+
     abbrev: str
     full_name: str
     fold_col: str
@@ -261,7 +266,7 @@ def transform_spike_mab_resistance_table(
     # Open if a path was provided.
     must_close = False
     if isinstance(source, (str, Path)):
-        fh = open(source, "r", newline="", encoding="utf-8-sig")
+        fh = open(source, newline="", encoding="utf-8-sig")
         must_close = True
     else:
         fh = source
@@ -472,10 +477,10 @@ def transform_3clpro_inhibitor_resistance_table(
     list[dict[str, Any]]
         Output rows as dictionaries.
     """
-    
+
     must_close = False
     if isinstance(source, (str, Path)):
-        fh = open(source, "r", newline="", encoding="utf-8-sig")
+        fh = open(source, newline="", encoding="utf-8-sig")
         must_close = True
     else:
         fh = source
@@ -523,8 +528,9 @@ def transform_3clpro_inhibitor_resistance_table(
             fh.close()
 
 
-
-def resolve_rdrp_inhibitor_columns(fieldnames: Iterable[str]) -> list[RdRpInhibitorColumns]:
+def resolve_rdrp_inhibitor_columns(
+    fieldnames: Iterable[str],
+) -> list[RdRpInhibitorColumns]:
     """
     Resolve which RdRP inhibitors are present in a resistance CSV header.
 
@@ -648,7 +654,7 @@ def transform_rdrp_inhibitor_resistance_table(
     """
     must_close = False
     if isinstance(source, (str, Path)):
-        fh = open(source, "r", newline="", encoding="utf-8-sig")
+        fh = open(source, newline="", encoding="utf-8-sig")
         must_close = True
     else:
         fh = source
@@ -661,7 +667,9 @@ def transform_rdrp_inhibitor_resistance_table(
         if "Mutation" in reader.fieldnames:
             mutation_col = "Mutation"
         else:
-            raise RuntimeError('CSV header is missing required column "Mutation" (or "mutation").')
+            raise RuntimeError(
+                'CSV header is missing required column "Mutation" (or "mutation").'
+            )
 
         drug_cols = resolve_rdrp_inhibitor_columns(reader.fieldnames)
 
@@ -678,7 +686,9 @@ def transform_rdrp_inhibitor_resistance_table(
                 if fold_val is None:
                     out[dc.full_name] = ""
                     continue
-                out[dc.full_name] = classify_rdrp_fold_susceptibility_reduction(fold_val)
+                out[dc.full_name] = classify_rdrp_fold_susceptibility_reduction(
+                    fold_val
+                )
 
             out_rows.append(out)
 
