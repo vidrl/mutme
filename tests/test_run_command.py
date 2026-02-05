@@ -18,9 +18,7 @@ def py_cmd(code: str) -> list[str]:
 
 
 def test_success_captures_stdout_and_stderr():
-    result = run_command(
-        py_cmd('import sys; print("out"); print("err", file=sys.stderr)')
-    )
+    result = run_command(py_cmd('import sys; print("out"); print("err", file=sys.stderr)'))
     assert result.returncode == 0
     assert result.stdout.strip() == "out"
     assert result.stderr.strip() == "err"

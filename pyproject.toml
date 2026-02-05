@@ -24,6 +24,7 @@ test = [
 ]
 dev = [
   "ruff>=0.15.0",
+  "pre-commit>=4.5",
 ]
 
 [project.scripts]
@@ -34,7 +35,7 @@ where = ["."]
 
 [tool.ruff]
 target-version = "py314"
-line-length = 88
+line-length = 100
 fix = false
 
 [tool.ruff.lint]
@@ -46,7 +47,7 @@ select = [
 ]
 
 ignore = [
-  "E501", # line length (handled by formatter if you use one)
+  "E501", # line length
 ]
 
 [tool.ruff.format]

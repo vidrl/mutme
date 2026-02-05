@@ -222,9 +222,7 @@ def run_command(
     input_data: str | bytes | None = stdin
     if input_data is not None:
         if text and isinstance(input_data, bytes):
-            raise TypeError(
-                "stdin is bytes but text=True; pass a str or set text=False"
-            )
+            raise TypeError("stdin is bytes but text=True; pass a str or set text=False")
         if (not text) and isinstance(input_data, str):
             raise TypeError("stdin is str but text=False; pass bytes or set text=True")
 
@@ -249,15 +247,11 @@ def run_command(
         stderr = ""
         if getattr(e, "stdout", None) is not None:
             stdout = (
-                e.stdout.decode()
-                if isinstance(e.stdout, (bytes, bytearray))
-                else str(e.stdout)
+                e.stdout.decode() if isinstance(e.stdout, (bytes, bytearray)) else str(e.stdout)
             )
         if getattr(e, "stderr", None) is not None:
             stderr = (
-                e.stderr.decode()
-                if isinstance(e.stderr, (bytes, bytearray))
-                else str(e.stderr)
+                e.stderr.decode() if isinstance(e.stderr, (bytes, bytearray)) else str(e.stderr)
             )
 
         partial = CommandResult(
@@ -276,12 +270,8 @@ def run_command(
     result = CommandResult(
         args=args_tuple,
         returncode=completed.returncode,
-        stdout=completed.stdout
-        if (capture_output and completed.stdout is not None)
-        else "",
-        stderr=completed.stderr
-        if (capture_output and completed.stderr is not None)
-        else "",
+        stdout=completed.stdout if (capture_output and completed.stdout is not None) else "",
+        stderr=completed.stderr if (capture_output and completed.stderr is not None) else "",
         cwd=cwd_str,
     )
 

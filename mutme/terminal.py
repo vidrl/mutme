@@ -41,9 +41,7 @@ def run(
     sequences: Path = typer.Option(
         ..., "--sequences", "-s", exists=True, help="Input sequences FASTA"
     ),
-    reference: Path = typer.Option(
-        ..., "--reference", "-r", exists=True, help="Reference FASTA"
-    ),
+    reference: Path = typer.Option(..., "--reference", "-r", exists=True, help="Reference FASTA"),
     gff: Path = typer.Option(..., "--gff", "-g", exists=True, help="Annotation GFF3"),
     annotations: Path = typer.Option(
         ...,
@@ -57,9 +55,7 @@ def run(
         "--annotations-delimiter",
         help="Annotation delimiter - default is comma-delimited for CSV",
     ),
-    output: Path = typer.Option(
-        ..., "--output", "-o", help="Name of output file: {output}.csv"
-    ),
+    output: Path = typer.Option(..., "--output", "-o", help="Name of output file: {output}.csv"),
     output_delimiter: str = typer.Option(
         ",",
         "--output-delimiter",
@@ -74,9 +70,7 @@ def run(
     alignment_preset: AlignmentPreset = typer.Option(
         "default", "-p", "--alignment-preset", help="Nextclade alignment preset"
     ),
-    nextclade_bin: str = typer.Option(
-        "nextclade", "--nextclade-bin", help="Nextclade executable"
-    ),
+    nextclade_bin: str = typer.Option("nextclade", "--nextclade-bin", help="Nextclade executable"),
     nextclade_extra_args: str = typer.Option(
         "", "--nextclade-extra-args", help="Extra args passed to Nextclade"
     ),
@@ -125,9 +119,7 @@ def run(
         include_mutation_comments=include_comments,
     )
 
-    cleanup = cleanup_file(
-        nextclade_output.tsv, keep=nextclade_keep_tsv, missing_ok=True
-    )
+    cleanup = cleanup_file(nextclade_output.tsv, keep=nextclade_keep_tsv, missing_ok=True)
     if cleanup.removed:
         typer.echo(f"Nextclade output removed: {cleanup.path}")
     else:
@@ -142,17 +134,13 @@ def prepare_database(
     input: Path = typer.Option(
         ..., "--input", "-i", exists=True, help="Input database file to transform (CSV)"
     ),
-    output: Path = typer.Option(
-        ..., "--output", "-o", help="Output annotations file (CSV)"
-    ),
+    output: Path = typer.Option(..., "--output", "-o", help="Output annotations file (CSV)"),
     preset: DatabasePreset = typer.Option(
         ..., "--database", "-d", help="Database for which transform presets exist"
     ),
 ):
     if preset == "sars-cov-2-mab-resistance":
-        write_rows_to_csv(
-            transform_spike_mab_resistance_table(input, add_dms_plus=True), output
-        )
+        write_rows_to_csv(transform_spike_mab_resistance_table(input, add_dms_plus=True), output)
     elif preset == "sars-cov-2-3clpro-inhibitor":
         write_rows_to_csv(
             transform_3clpro_inhibitor_resistance_table(input, add_pocket_suffix=True),

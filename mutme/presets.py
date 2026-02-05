@@ -667,9 +667,7 @@ def transform_rdrp_inhibitor_resistance_table(
         if "Mutation" in reader.fieldnames:
             mutation_col = "Mutation"
         else:
-            raise RuntimeError(
-                'CSV header is missing required column "Mutation" (or "mutation").'
-            )
+            raise RuntimeError('CSV header is missing required column "Mutation" (or "mutation").')
 
         drug_cols = resolve_rdrp_inhibitor_columns(reader.fieldnames)
 
@@ -686,9 +684,7 @@ def transform_rdrp_inhibitor_resistance_table(
                 if fold_val is None:
                     out[dc.full_name] = ""
                     continue
-                out[dc.full_name] = classify_rdrp_fold_susceptibility_reduction(
-                    fold_val
-                )
+                out[dc.full_name] = classify_rdrp_fold_susceptibility_reduction(fold_val)
 
             out_rows.append(out)
 

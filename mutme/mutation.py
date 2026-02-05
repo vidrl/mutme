@@ -174,9 +174,7 @@ def load_annotation_table(
                 f"Ambiguous comment column: multiple headers match 'comment' case-insensitively: "
                 f"{comments_matches} in {path}"
             )
-        resolved_comments_col: str | None = (
-            comments_matches[0] if comments_matches else None
-        )
+        resolved_comments_col: str | None = comments_matches[0] if comments_matches else None
 
         annotation_fields = [c for c in fieldnames if c != resolved_mutation_col]
         if not annotation_fields:
@@ -185,9 +183,7 @@ def load_annotation_table(
         for line_no, row in enumerate(reader, start=2):
             raw_mut = (row.get(resolved_mutation_col) or "").strip()
             if not raw_mut:
-                raise InputFormatError(
-                    f"Empty '{resolved_mutation_col}' at {path}:{line_no}"
-                )
+                raise InputFormatError(f"Empty '{resolved_mutation_col}' at {path}:{line_no}")
 
             mut = normalize(raw_mut) if normalize else raw_mut
 
@@ -198,11 +194,7 @@ def load_annotation_table(
                 if not val:
                     continue
 
-                key = (
-                    "comment"
-                    if (resolved_comments_col and col == resolved_comments_col)
-                    else col
-                )
+                key = "comment" if (resolved_comments_col and col == resolved_comments_col) else col
                 existing = bucket.get(key, "")
                 bucket[key] = _merge_field_value(existing, val)
 
@@ -273,9 +265,7 @@ def compare_nextclade_to_annotations(
         for line_no, row in enumerate(reader, start=2):
             seq_name = (row.get(seq_name_col) or "").strip()
             if not seq_name:
-                raise InputFormatError(
-                    f"Empty '{seq_name_col}' at {next_path}:{line_no}"
-                )
+                raise InputFormatError(f"Empty '{seq_name_col}' at {next_path}:{line_no}")
 
             qc_status = (row.get(qc_status_col) or "").strip()
 
@@ -409,9 +399,7 @@ def write_long_format_table(
         header.append(comments_col)
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f, fieldnames=header, delimiter=delimiter, extrasaction="ignore"
-        )
+        writer = csv.DictWriter(f, fieldnames=header, delimiter=delimiter, extrasaction="ignore")
         writer.writeheader()
 
         for r in reports:
