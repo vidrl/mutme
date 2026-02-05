@@ -1,0 +1,18 @@
+##gff-version 3
+##sequence-region	.	266	29533
+.	.	gene	26245	26472	.	+	.	ID=gene:E;gene_name=E
+.	.	gene	26523	27191	.	+	.	ID=gene:M;gene_name=M
+.	.	gene	28274	29533	.	+	.	ID=gene:N;gene_name=N
+.	.	gene	266	13468	.	+	.	ID=gene:ORF1a;gene_name=ORF1a
+.	.	CDS	10055	10972	.	+	0	ID=cds:nsp5;Parent=gene:ORF1a;gene_name=nsp5
+.	.	gene	13442	16236	.	+	.	ID=gene:nsp12;gene_name=nsp12
+.	.	CDS	13442	13468	.	+	0	ID=cds:nsp12;Parent=gene:nsp12;gene_name=nsp12
+.	.	CDS	13468	16236	.	+	0	ID=cds:nsp12;Parent=gene:nsp12;gene_name=nsp12
+.	.	gene	13468	21555	.	+	.	ID=gene:ORF1b;gene_name=ORF1b
+.	.	gene	25393	26220	.	+	.	ID=gene:ORF3a;gene_name=ORF3a
+.	.	gene	27202	27387	.	+	.	ID=gene:ORF6;gene_name=ORF6
+.	.	gene	27394	27759	.	+	.	ID=gene:ORF7a;gene_name=ORF7a
+.	.	gene	27756	27887	.	+	.	ID=gene:ORF7b;gene_name=ORF7b
+.	.	gene	27894	28259	.	+	.	ID=gene:ORF8;gene_name=ORF8
+.	.	gene	28284	28577	.	+	.	ID=gene:ORF9b;gene_name=ORF9b
+.	.	gene	21563	25384	.	+	.	ID=gene:S;gene_name=S
