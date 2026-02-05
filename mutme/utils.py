@@ -12,6 +12,7 @@ from typing import Any, Literal
 DEFAULT_MUTATION_COLUMNS = (
     "seqName",
     "qc.overallStatus",
+    "qc.stopCodons.stopCodons",
     "substitutions",
     "deletions",
     "insertions",
@@ -511,7 +512,7 @@ def write_rows_to_tsv(
     write_rows_to_delimited_file(
         rows,
         destination,
-        delimiter="\\t",
+        delimiter="\t",
         include_header=include_header,
     )
 

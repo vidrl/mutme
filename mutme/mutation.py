@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import os
+import re
+from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,13 +84,14 @@ class SequenceMutationHit:
 @dataclass(frozen=True, slots=True)
 class SequenceAnnotationReport:
     """
-    Per-sequence report of AA substitution/indel hits against an annotation table.
+    Per-sequence report of AA substitution/indel/stop hits against an annotation table.
     """
 
     seq_name: str
     qc_status: str
     aa_substitutions: tuple[str, ...]
     aa_indels: tuple[str, ...]
+    aa_stop_codons: tuple[str, ...]
     hits: tuple[SequenceMutationHit, ...]
 
 
@@ -208,6 +211,7 @@ def compare_nextclade_to_annotations(
     # Nextclade columns
     seq_name_col: str = "seqName",
     qc_status_col: str = "qc.overallStatus",
+    aa_stop_col: str = "qc.stopCodons.stopCodons",
     aa_sub_col: str = "aaSubstitutions",
     aa_del_col: str = "aaDeletions",
     aa_ins_col: str = "aaInsertions",
@@ -248,6 +252,9 @@ def compare_nextclade_to_annotations(
     )
     annotation_keys = set(annotations.keys())
 
+    # STOP CODONS: build lookup from annotation stop keys
+    stop_lookup = _build_stop_lookup(annotation_keys)
+
     reports: list[SequenceAnnotationReport] = []
 
     with next_path.open("r", newline="", encoding="utf-8") as f:
@@ -255,7 +262,7 @@ def compare_nextclade_to_annotations(
         if reader.fieldnames is None:
             raise InputFormatError(f"Nextclade output has no header row: {next_path}")
 
-        required = {seq_name_col, aa_sub_col, aa_del_col, aa_ins_col}
+        required = {seq_name_col, aa_sub_col, aa_del_col, aa_ins_col, aa_stop_col}
         missing = required - set(reader.fieldnames)
         if missing:
             raise InputFormatError(
@@ -273,13 +280,27 @@ def compare_nextclade_to_annotations(
             dels = _split_csv_cell(row.get(aa_del_col))
             ins = _split_csv_cell(row.get(aa_ins_col))
 
+            stops = _split_csv_cell(row.get(aa_stop_col))
+
             if normalize is not None:
                 subs = {normalize(x) for x in subs}
                 dels = {normalize(x) for x in dels}
                 ins = {normalize(x) for x in ins}
 
+            aa_stops: set[str] = set()
+
+            for raw in stops:
+                parsed = _parse_nextclade_stop(raw)
+                if parsed is None:
+                    continue
+                gene, pos = parsed
+
+                mapped = stop_lookup.get((gene, pos))
+                if mapped:
+                    aa_stops.update(mapped)
+
             aa_indels = dels | ins
-            all_aa = subs | aa_indels
+            all_aa = subs | aa_indels | aa_stops
 
             hits: list[SequenceMutationHit] = []
 
@@ -307,6 +328,7 @@ def compare_nextclade_to_annotations(
                     qc_status=qc_status,
                     aa_substitutions=tuple(sorted(subs)),
                     aa_indels=tuple(sorted(aa_indels)),
+                    aa_stop_codons=tuple(sorted(aa_stops)),
                     hits=tuple(hits),
                 )
             )
@@ -319,13 +341,13 @@ def write_long_format_table(
     output: str | Path,
     *,
     include_sequences_with_no_hits: bool = False,
-    seq_name_col: str = "seqName",
-    seq_qc_col: str = "seqQuality",
+    seq_name_col: str = "seq_name",
+    seq_qc_col: str = "seq_quality",
     mutation_col: str = "mutation",
     # Optional: add these for auditing/debugging
     include_detected_lists: bool = False,
-    detected_subs_col: str = "detectedAaSubstitutions",
-    detected_indels_col: str = "detectedAaIndels",
+    detected_subs_col: str = "detected_aa_substitutions",
+    detected_indels_col: str = "detected_aa_indels",
     include_mutation_comments: bool = False,
     comments_col: str = "comment",
     # Ordering / stability
@@ -339,13 +361,14 @@ def write_long_format_table(
     Output columns
     --------------
     Always included:
-    - seqName (configurable via `seq_name_col`)
+    - seq_name (configurable via `seq_name_col`)
+    - seq_quality (configurable via `seq_quality_col`)
     - mutation (configurable via `mutation_col`)
     - all annotation columns present across `reports[*].hits[*].annotations`
 
     Optionally included:
-    - detectedAaSubstitutions: comma-joined list of all AA substitutions Nextclade reported
-    - detectedAaIndels: comma-joined list of all AA indels (deletions + insertions)
+    - detected_aa_substitutions: comma-joined list of all AA substitutions Nextclade reported
+    - detected_aa_indels: comma-joined list of all AA indels (deletions + insertions)
 
     Parameters
     ----------
@@ -441,3 +464,45 @@ def write_long_format_table(
                 writer.writerow(row)
 
     return out_path
+
+
+# Stop codons
+# Because Nextclade doesn’t include the reference AA (it only gives ORF1a:4715), one cannot reconstruct N4715* reliably. So the clean approach is:
+# - Pre-index annotation table’s stop-codon mutations into a lookup keyed by (gene, position)
+# - Parse Nextclade’s stop list into (gene, position).
+# - Use that lookup to convert Nextclade stop sites into the exact annotation mutation strings (so the existing exact-match logic works).
+
+# Annotation: requires gene prefix; allows optional ref AA before position (ORF1a:N4715*)
+_STOP_ANNO_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z\*])?(?P<pos>\d+)\*$")
+
+# Nextclade: gene:pos (ORF1a:4715)
+_STOP_NEXTCLADE_RE = re.compile(r"^(?P<gene>[^:]+):(?P<pos>\d+)$")
+
+
+def _parse_annotation_stop(mut: str) -> tuple[str, int] | None:
+    m = _STOP_ANNO_RE.match(mut.strip())
+    if not m:
+        return None
+    return (m.group("gene"), int(m.group("pos")))
+
+
+def _parse_nextclade_stop(item: str) -> tuple[str, int] | None:
+    m = _STOP_NEXTCLADE_RE.match(item.strip())
+    if not m:
+        return None
+    return (m.group("gene"), int(m.group("pos")))
+
+
+def _build_stop_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[str]]:
+    """
+    (gene, pos) -> [annotation stop mutation strings]
+    """
+    out: dict[tuple[str, int], list[str]] = defaultdict(list)
+    for key in annotation_keys:
+        if not key.endswith("*"):
+            continue
+        parsed = _parse_annotation_stop(key)
+        if parsed is None:
+            continue
+        out[parsed].append(key)
+    return dict(out)
