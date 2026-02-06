@@ -160,8 +160,8 @@ S:87,,"",,Premature stop at position 87
 S:87-,,"",,Deletion at position 87
 ```
 
-Tips:
 
+> [!TIP]
 - Columns can be floats, ints, strings, or left empty.
 - If you include a comment column, you can choose to carry it into the output with `--include-comments`.
 
@@ -176,8 +176,8 @@ sample_03,mediocre,S:87,,"",,Premature stop at position 87
 sample_03,mediocre,S:87-,,"",,Deletion at position 87
 ```
 
-What to notice:
 
+> [!NOTE]
 - The output keeps your original columns (and their values) attached to each mutation hit.
 - A sequence with no hits simply won’t appear in the output unless you choose to emit empty rows (not enabled by default).
 
@@ -186,14 +186,10 @@ What to notice:
 `mutme` provides two main commands: `run` (the core workflow) and `subset-gff3`
 (a helper for trimming GFF3 files based on mutations in an annotation table).
 
----
-
 ### `mutme run`
 
 Run Nextclade using a custom reference and GFF3, then match detected amino-acid
 mutations against an annotation table.
-
-This is the main entry point for most users.
 
 #### Basic usage
 
@@ -206,6 +202,7 @@ mutme run \
   --output results.csv
 ```
 
+> [!NOTE]
 - `sequences.fasta` may contain **one or many consensus sequences**
 - Each FASTA record is processed independently
 - Results are distinguished by sequence name in the output table
@@ -270,13 +267,6 @@ mutme run \
 
 Subset a GFF3 file to only genes (and optionally CDS features) referenced by
 mutation prefixes in an annotation table.
-
-This is useful for:
-- building smaller reference annotations
-- focusing analyses on specific genes
-- speeding up downstream Nextclade runs
-
----
 
 #### Basic usage
 
