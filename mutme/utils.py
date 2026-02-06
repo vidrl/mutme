@@ -237,6 +237,7 @@ def run_command(
             check=False,  # we implement our own check to raise a richer error
             text=text,
             capture_output=capture_output,
+            shell=shell,
         )
     except FileNotFoundError as e:
         raise CommandExecutionError(
@@ -706,7 +707,7 @@ def subset_gff3_by_mutation_prefixes(
     named "mutation" case-insensitively (or a user-specified column name), and extracts
     *prefixes* from each cell by splitting on `prefix_separator` and taking the portion
     before the first separator. If a value does not contain the separator, a warning is
-    emitted (the whole value is still used as the prefix). Prefixes are de-duplicated.
+    emitted and the value is skipped. Prefixes are de-duplicated.
 
     The GFF3 is then streamed and filtered to keep:
 
@@ -811,7 +812,7 @@ def subset_gff3_by_mutation_prefixes(
 
     def _open_text(path: Path, mode: str) -> IO[Any]:
         """
-        Open plain text or gzip-compressed files transparently, returning a text handle.
+        Open plain text files transparently, returning a text handle.
         """
         if "b" in mode:
             raise ValueError("Binary mode not supported by _open_text; use text modes only.")
@@ -909,8 +910,6 @@ def subset_gff3_by_mutation_prefixes(
             rows_read=rows_read,
             warnings_emitted=warnings_emitted,
         )
-
-    print(unique_prefixes)
 
     # Stream GFF3 and filter
     genes_written = 0

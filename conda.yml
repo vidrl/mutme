@@ -3,4 +3,9 @@ channels:
   - conda-forge        
   - bioconda    
 dependencies:
-  - nextclade=3.18      
+  - python=3.14
+  - nextclade=3.18
+  - pip
+  - typer=0.21.1
+  - pip:
+    - pip install git+https://github.com/vidrl/mutme
