@@ -32,6 +32,25 @@ interpret biological meaning beyond what you encode in your annotation table.
 - Robust handling of multiple annotation rows per mutation
 - Long-format output suitable for downstream analysis
 
+## Table of Contents
+
+- [Installation](#installation)
+  - [Requirements](#requirements)
+  - [Install from source](#install-from-source)
+  - [Install with Anaconda](#install-with-anaconda)
+- [Quick Start](#quick-start)
+- [Annotations Table](#annotations-table)
+  - [How to write the annotations table](#how-to-write-the-annotations-table)
+  - [Mutation encoding (what goes in the mutation column)](#mutation-encoding-what-goes-in-the-mutation-column)
+- [Output Table](#output-table)
+- [Examples](#examples)
+  - [I only care if these mutations are present](#i-only-care-if-these-mutations-are-present)
+  - [I want to annotate mutations with mAb susceptibility values](#i-want-to-annotate-mutations-with-mab-susceptibility-values)
+- [Command reference](#command-reference)
+  - [mutme run](#mutme-run)
+  - [mutme subset-gff3](#mutme-subset-gff3)
+- [External Dependencies](#external-dependencies)
+- [Citation](#citation)
 
 ## Installation
 
@@ -46,7 +65,7 @@ interpret biological meaning beyond what you encode in your annotation table.
 pip install git+https://github.com/vidrl/mutme
 ```
 
-### Install dependencies with `conda/mamba`
+### Install with Anaconda
 
 ```bash
 mamba create -n mutme -c conda-forge -c bioconda python=3.14 nextclade=3.18
@@ -80,7 +99,7 @@ Notes:
 
 ### How to write the annotations table
 
-Your annotation table must have a `mutation` column (case-insensitive). Everything else is optional — add as many extra columns as you like. One special case is a `comment` column, which can contain e.g. links to the mutation phenotype publications. 
+Your annotation table must have a `mutation` column (case-insensitive). Everything else is optional — add as many extra columns as you like. One special case is a `comment` column, which can contain e.g. links to the mutation phenotype study. 
 
 ### Mutation encoding (what goes in the mutation column)
 
@@ -95,9 +114,9 @@ Gene names must be defined in the GFF3 (see below). If CDS are included ensure t
 
 At minimum you’ll get:
 
-- `seq_name` — the FASTA record name (so multiple sequences are kept separate)
-- `seq_quality` — Nextclade QC overall status
-- `mutation` — the matched mutation from your annotation table
+- `seq_name` - the FASTA record name (so multiple sequences are kept separate)
+- `seq_quality` - Nextclade QC overall status
+- `mutation` - the matched mutation from your annotation table
 
 If your annotation table has extra columns, those columns are included too.
 
