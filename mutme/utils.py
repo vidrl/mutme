@@ -917,46 +917,6 @@ def subset_gff3_by_mutation_prefixes(
     cds_written = 0
     matched_gene_ids: set[str] = set()
 
-    def _should_keep_gene(
-        attrs: Mapping[str, str],
-        unique_prefixes: set[str],
-        gene_attr_key: str,
-    ) -> tuple[bool, str | None]:
-        """
-        Decide whether a gene feature should be kept based on a single attribute key.
-
-        Returns (keep, matched_value).
-        """
-        v = attrs.get(gene_attr_key)
-        if v is None:
-            return False, None
-
-        v = v.strip()
-        if v in unique_prefixes:
-            return True, v
-
-        return False, None
-
-    def _should_keep_cds(
-        attrs: Mapping[str, str],
-        unique_prefixes: set[str],
-        cds_gene_attr_key: str,
-    ) -> tuple[bool, str | None]:
-        """
-        Decide whether a CDS feature should be kept based on a single attribute key.
-
-        Returns (keep, matched_value).
-        """
-        v = attrs.get(cds_gene_attr_key)
-        if v is None:
-            return False, None
-
-        v = v.strip()
-        if v in unique_prefixes:
-            return True, v
-
-        return False, None
-
     out_handle: IO[Any] | None = None
     if output_path is not None:
         outp = Path(output_path)
@@ -983,13 +943,11 @@ def subset_gff3_by_mutation_prefixes(
                 attrs = _parse_gff3_attrs(fields[8])
 
                 if ftype == gff_gene_feature_type:
-                    print(ftype, gff_gene_feature_type, attrs)
                     keep, gid = _should_keep_gene(
                         attrs,
                         unique_prefixes,
                         gene_attr_key=gene_match_attr_key,
                     )
-                    print(keep, gid)
                     if keep:
                         genes_written += 1
                         if gid is not None:
@@ -1003,11 +961,21 @@ def subset_gff3_by_mutation_prefixes(
                         cds_gene_attr_key=cds_gene_attr_key,
                     )
                     if keep:
+                        # If both "Name" and "gene" attributes exist, force "Name" value to equal "gene" value
+                        # otherwise Nextclade will use the "Name" value directly and it may not correspond to
+                        # the gene prefixes in the annotation table
+                        gene_val = attrs.get("gene")
+                        if gene_val is not None and "Name" in attrs:
+                            attrs["Name"] = gene_val.strip()
+
                         cds_written += 1
                         if gid is not None:
                             matched_gene_ids.add(gid)
+
                         if out_handle is not None:
-                            out_handle.write(line)
+                            # Write a modified line with updated attributes
+                            fields[8] = _format_gff3_attrs(attrs)
+                            out_handle.write("\t".join(fields) + "\n")
                 else:
                     # Ignore other features
                     continue
@@ -1023,3 +991,63 @@ def subset_gff3_by_mutation_prefixes(
         rows_read=rows_read,
         warnings_emitted=warnings_emitted,
     )
+
+
+def _should_keep_gene(
+    attrs: Mapping[str, str],
+    unique_prefixes: set[str],
+    gene_attr_key: str,
+) -> tuple[bool, str | None]:
+    """
+    Decide whether a gene feature should be kept based on a single attribute key.
+
+    Returns (keep, matched_value).
+    """
+    v = attrs.get(gene_attr_key)
+    if v is None:
+        return False, None
+
+    v = v.strip()
+    if v in unique_prefixes:
+        return True, v
+
+    return False, None
+
+
+def _should_keep_cds(
+    attrs: Mapping[str, str],
+    unique_prefixes: set[str],
+    cds_gene_attr_key: str,
+) -> tuple[bool, str | None]:
+    """
+    Decide whether a CDS feature should be kept based on a single attribute key.
+
+    Returns (keep, matched_value).
+    """
+    v = attrs.get(cds_gene_attr_key)
+    if v is None:
+        return False, None
+
+    v = v.strip()
+    if v in unique_prefixes:
+        return True, v
+
+    return False, None
+
+
+def _format_gff3_attrs(attrs: Mapping[str, str]) -> str:
+    """
+    Serialize a dict of GFF3 attributes into the 9th column format key=value;key2=value2.
+    """
+    if not attrs:
+        return "."
+    # Prefer a stable, conventional order: ID first if present, then the rest alphabetically.
+    items = list(attrs.items())
+    if "ID" in attrs:
+        items = [("ID", attrs["ID"])] + [(k, v) for (k, v) in items if k != "ID"]
+    # Sort remaining keys (excluding ID which is already first)
+    head = items[:1] if items and items[0][0] == "ID" else []
+    tail = items[1:] if head else items
+    tail = sorted(tail, key=lambda kv: kv[0])
+    items = head + tail
+    return ";".join(f"{k}={v}" for k, v in items)
