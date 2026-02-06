@@ -251,6 +251,9 @@ def compare_nextclade_to_annotations(
     # STOP CODONS: build lookup from annotation stop keys
     stop_lookup = _build_stop_lookup(annotation_keys)
 
+    # DELETIONS: build lookup from annotation del keys
+    del_lookup = _build_del_lookup(annotation_keys)
+
     reports: list[SequenceAnnotationReport] = []
 
     with next_path.open("r", newline="", encoding="utf-8") as f:
@@ -272,26 +275,34 @@ def compare_nextclade_to_annotations(
 
             qc_status = (row.get(qc_status_col) or "").strip()
 
-            subs = _split_csv_cell(row.get(aa_sub_col))
-            dels = _split_csv_cell(row.get(aa_del_col))
-            ins = _split_csv_cell(row.get(aa_ins_col))
+            aa_subs = _split_csv_cell(row.get(aa_sub_col))
+            aa_ins = _split_csv_cell(row.get(aa_ins_col))
 
-            stops = _split_csv_cell(row.get(aa_stop_col))
+            aa_dels = _split_csv_cell(row.get(aa_del_col))
+            aa_stops = _split_csv_cell(row.get(aa_stop_col))
 
-            aa_stops: set[str] = set()
+            # Lookups because annotations accept different formats than Nextclade for DEL/STOP
+            aa_dels_match: set[str] = set()
+            for raw in aa_dels:
+                parsed = _parse_nextclade_del(raw)
+                if parsed is None:
+                    continue
+                mapped = del_lookup.get(parsed)
+                if mapped:
+                    aa_dels_match.update(mapped)
 
-            for raw in stops:
+            aa_stops_match: set[str] = set()
+            for raw in aa_stops:
                 parsed = _parse_nextclade_stop(raw)
                 if parsed is None:
                     continue
-                gene, pos = parsed
-
-                mapped = stop_lookup.get((gene, pos))
+                mapped = stop_lookup.get(parsed)
                 if mapped:
-                    aa_stops.update(mapped)
+                    aa_stops_match.update(mapped)
 
-            aa_indels = dels | ins
-            all_aa = subs | aa_indels | aa_stops
+            aa_indels = aa_dels | aa_ins  # keep raw Nextclade tokens for optional reporting
+
+            all_aa = aa_subs | aa_ins | aa_dels_match | aa_stops_match
 
             hits: list[SequenceMutationHit] = []
 
@@ -317,7 +328,7 @@ def compare_nextclade_to_annotations(
                 SequenceAnnotationReport(
                     seq_name=seq_name,
                     qc_status=qc_status,
-                    aa_substitutions=tuple(sorted(subs)),
+                    aa_substitutions=tuple(sorted(aa_subs)),
                     aa_indels=tuple(sorted(aa_indels)),
                     aa_stop_codons=tuple(sorted(aa_stops)),
                     hits=tuple(hits),
@@ -486,6 +497,37 @@ def _build_stop_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[
     out: dict[tuple[str, int], list[str]] = defaultdict(list)
     for key in annotation_keys:
         parsed = _parse_annotation_stop(key)
+        if parsed is None:
+            continue
+        out[parsed].append(key)
+    return dict(out)
+
+
+# Annotation accepts: {gene}:{pos}-  OR  {gene}:{aa}{pos}-
+_DEL_ANNO_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z])?(?P<pos>\d+)-$")
+
+# Nextclade accepts: {gene}:{aa}{pos}-
+_DEL_NEXTCLADE_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z])(?P<pos>\d+)-$")
+
+
+def _parse_annotation_del(mut: str) -> tuple[str, int] | None:
+    m = _DEL_ANNO_RE.match(mut.strip())
+    if not m:
+        return None
+    return (m.group("gene"), int(m.group("pos")))
+
+
+def _parse_nextclade_del(item: str) -> tuple[str, int] | None:
+    m = _DEL_NEXTCLADE_RE.match(item.strip())
+    if not m:
+        return None
+    return (m.group("gene"), int(m.group("pos")))
+
+
+def _build_del_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[str]]:
+    out: dict[tuple[str, int], list[str]] = defaultdict(list)
+    for key in annotation_keys:
+        parsed = _parse_annotation_del(key)
         if parsed is None:
             continue
         out[parsed].append(key)
