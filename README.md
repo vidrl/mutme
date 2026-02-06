@@ -17,6 +17,7 @@ You provide:
 - a mutation annotation table (CSV/TSV)
 - a query sequence file containing the consensus genomes (FASTA)
 
+> [!IMPORTANT]
 `mutme` is intentionally generic and database-agnostic. It does not attempt to
 interpret biological meaning beyond what you encode in your annotation table.
 
@@ -55,7 +56,7 @@ pip install git+https://github.com/vidrl/mutme
 
 Directly from repository:
 
-```
+```bash
 mamba create -f https://raw.githubusercontent.com/vidrl/mutme/main/conda.yml
 ```
 
