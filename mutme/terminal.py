@@ -139,17 +139,17 @@ def prepare_database(
         ..., "--database", "-d", help="Database for which transform presets exist"
     ),
 ):
-    if preset == "sars-cov-2-mab-resistance":
+    if preset == "stanford-scov2-mab-resistance":
         write_rows_to_csv(transform_spike_mab_resistance_table(input, add_dms_plus=True), output)
-    elif preset == "sars-cov-2-3clpro-inhibitor":
+    elif preset == "stanford-scov23clpro-inhibitor":
         write_rows_to_csv(
             transform_3clpro_inhibitor_resistance_table(input, add_pocket_suffix=True),
             output,
         )
-    elif preset == "sars-cov-2-rdrp-inhibitor":
+    elif preset == "stanford-scov2-rdrp-inhibitor":
         write_rows_to_csv(transform_rdrp_inhibitor_resistance_table(input), output)
     else:
-        pass
+        typer.echo(f"Database preset '{preset}' not supported")
 
 
 app()

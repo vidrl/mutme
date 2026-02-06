@@ -23,9 +23,9 @@ DEFAULT_MUTATION_COLUMNS = (
 
 
 DatabasePreset = Literal[
-    "sars-cov-2-mab-resistance",
-    "sars-cov-2-3clpro-inhibitor",
-    "sars-cov-2-rdrp-inhibitor",
+    "stanford-scov2-mab-resistance",
+    "stanford-scov2-3clpro-inhibitor",
+    "stanford-scov2-rdrp-inhibitor",
 ]
 AlignmentPreset = Literal["default", "high-diversity", "short-sequences"]
 QualityControlStatus = Literal["good", "mediocre", "bad"]

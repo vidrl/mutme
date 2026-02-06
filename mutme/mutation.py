@@ -207,7 +207,6 @@ def load_annotation_table(
 def compare_nextclade_to_annotations(
     nextclade_tsv: str | os.PathLike[str],
     annotation_csv: str | os.PathLike[str],
-    *,
     # Nextclade columns
     seq_name_col: str = "seqName",
     qc_status_col: str = "qc.overallStatus",
@@ -217,8 +216,6 @@ def compare_nextclade_to_annotations(
     aa_ins_col: str = "aaInsertions",
     # Annotation table column
     mutation_col: str = "mutation",
-    # Optional normalization hook (applied to both sides)
-    normalize: Callable[[str], str] | None = None,
     # Optional delimiter for annotation file
     delimiter: str = ",",
 ) -> list[SequenceAnnotationReport]:
@@ -247,7 +244,6 @@ def compare_nextclade_to_annotations(
     annotations = load_annotation_table(
         annotation_csv,
         mutation_col=mutation_col,
-        normalize=normalize,
         delimiter=delimiter,
     )
     annotation_keys = set(annotations.keys())
@@ -281,11 +277,6 @@ def compare_nextclade_to_annotations(
             ins = _split_csv_cell(row.get(aa_ins_col))
 
             stops = _split_csv_cell(row.get(aa_stop_col))
-
-            if normalize is not None:
-                subs = {normalize(x) for x in subs}
-                dels = {normalize(x) for x in dels}
-                ins = {normalize(x) for x in ins}
 
             aa_stops: set[str] = set()
 
@@ -339,7 +330,6 @@ def compare_nextclade_to_annotations(
 def write_long_format_table(
     reports: Sequence[SequenceAnnotationReport],
     output: str | Path,
-    *,
     include_sequences_with_no_hits: bool = False,
     seq_name_col: str = "seq_name",
     seq_qc_col: str = "seq_quality",
@@ -466,7 +456,6 @@ def write_long_format_table(
     return out_path
 
 
-# Stop codons
 # Because Nextclade doesn’t include the reference AA (it only gives ORF1a:4715), one cannot reconstruct N4715* reliably. So the clean approach is:
 # - Pre-index annotation table’s stop-codon mutations into a lookup keyed by (gene, position)
 # - Parse Nextclade’s stop list into (gene, position).
