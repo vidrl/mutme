@@ -9,7 +9,9 @@ codons against a curated mutation annotation table.
 
 `mutme` helps you answer a simple question at scale:
 
-> “Which mutations of interest are present in my consensus genomes, and what annotations are associated with them?”
+> “Which mutations of interest are present in my consensus genomes?" 
+
+It can also provide generic annotations associated with each mutation, for example antiviral-resistance mutations, lineage markers, or any other genotype/phenotype you're interested in.
 
 You provide:
 - a reference genome (FASTA)
