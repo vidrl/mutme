@@ -344,7 +344,7 @@ This prints summary statistics but does not write an output GFF3.
 
 ## External Dependencies
 
-`mutme` relies on **nextclade** for sequence alignment and mutation calling.
+`mutme` relies on `Nextclade` for sequence alignment and mutation calling.
 
 > [Aksamentov et al. (2021)](https://doi.org/10.21105/joss.03773) - Nextclade: clade assignment, mutation calling and quality control for viral genomes - Journal of Open Source Software
 
