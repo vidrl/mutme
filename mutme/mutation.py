@@ -456,23 +456,23 @@ def write_long_format_table(
     return out_path
 
 
-# Because Nextclade doesn’t include the reference AA (it only gives ORF1a:4715), one cannot reconstruct N4715* reliably. So the clean approach is:
-# - Pre-index annotation table’s stop-codon mutations into a lookup keyed by (gene, position)
-# - Parse Nextclade’s stop list into (gene, position).
-# - Use that lookup to convert Nextclade stop sites into the exact annotation mutation strings (so the existing exact-match logic works).
-
-# Annotation: requires gene prefix; allows optional ref AA before position (ORF1a:N4715*)
-_STOP_ANNO_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z\*])?(?P<pos>\d+)\*$")
-
-# Nextclade: gene:pos (ORF1a:4715)
+# Annotation accepts formats: {gene}:{pos} (Nextclade) and {gene}:{aa}{pos}* (general)
 _STOP_NEXTCLADE_RE = re.compile(r"^(?P<gene>[^:]+):(?P<pos>\d+)$")
+_STOP_ANNO_GENERAL_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z])(?P<pos>\d+)\*$")
 
 
 def _parse_annotation_stop(mut: str) -> tuple[str, int] | None:
-    m = _STOP_ANNO_RE.match(mut.strip())
-    if not m:
-        return None
-    return (m.group("gene"), int(m.group("pos")))
+    s = mut.strip()
+
+    m = _STOP_NEXTCLADE_RE.match(s)
+    if m:
+        return (m.group("gene"), int(m.group("pos")))
+
+    m = _STOP_ANNO_GENERAL_RE.match(s)
+    if m:
+        return (m.group("gene"), int(m.group("pos")))
+
+    return None
 
 
 def _parse_nextclade_stop(item: str) -> tuple[str, int] | None:
@@ -483,13 +483,8 @@ def _parse_nextclade_stop(item: str) -> tuple[str, int] | None:
 
 
 def _build_stop_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[str]]:
-    """
-    (gene, pos) -> [annotation stop mutation strings]
-    """
     out: dict[tuple[str, int], list[str]] = defaultdict(list)
     for key in annotation_keys:
-        if not key.endswith("*"):
-            continue
         parsed = _parse_annotation_stop(key)
         if parsed is None:
             continue
