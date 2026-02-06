@@ -114,7 +114,7 @@ Gene names must be defined in the GFF3 (see below). If CDS are included ensure t
 
 ## Output Table
 
-At minimum you’ll get:
+Default output columns (always present):
 
 - `seq_name` - the FASTA record name (so multiple sequences are kept separate)
 - `seq_quality` - Nextclade QC overall status
@@ -162,10 +162,8 @@ S:87,,"",,Premature stop at position 87
 S:87-,,"",,Deletion at position 87
 ```
 
-
 > [!TIP]
-- Columns can be floats, ints, strings, or left empty.
-- If you include a comment column, you can choose to carry it into the output with `--include-comments`.
+Columns can be floats, ints, strings, or left empty. If you include a comment column, you can choose to carry it into the output with `--include-comments`.
 
 #### Output table (example with `--include-comments`)
 
@@ -178,10 +176,8 @@ sample_03,mediocre,S:87,,"",,Premature stop at position 87
 sample_03,mediocre,S:87-,,"",,Deletion at position 87
 ```
 
-
 > [!NOTE]
-- The output keeps your original columns (and their values) attached to each mutation hit.
-- A sequence with no hits simply won’t appear in the output unless you choose to emit empty rows (not enabled by default).
+The output keeps your original columns (and their values) attached to each mutation hit. A sequence with no hits won’t appear in the output unless you choose to emit empty rows (not enabled by default).
 
 ## Command reference
 
@@ -205,9 +201,7 @@ mutme run \
 ```
 
 > [!NOTE]
-- `sequences.fasta` may contain **one or many consensus sequences**
-- Each FASTA record is processed independently
-- Results are distinguished by sequence name in the output table
+Input sequence file `sequences.fasta` may contain **one or many consensus sequences**. Each FASTA record is processed independently and results are distinguished by sequence name in the output table.
 
 ---
 
