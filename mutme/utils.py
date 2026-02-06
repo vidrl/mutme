@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, Any, Literal
 
 DEFAULT_MUTATION_COLUMNS = (
     "seqName",
@@ -294,7 +294,6 @@ class NextcladeTabularOutput:
 
 
 def run_nextclade(
-    *,
     sequences_fasta: str | os.PathLike[str],
     reference_fasta: str | os.PathLike[str],
     annotation_gff3: str | os.PathLike[str],
@@ -669,3 +668,358 @@ def cleanup_file(
         return CleanupReport(path=p, removed=False, reason=f"permission denied: {e}")
     except OSError as e:
         return CleanupReport(path=p, removed=False, reason=f"os error: {e}")
+
+
+@dataclass(frozen=True)
+class SubsetGffResult:
+    """
+    Result summary for `subset_gff3_by_mutation_prefixes`.
+    """
+
+    unique_prefixes: set[str]
+    matched_gene_ids: set[str]
+    genes_written: int
+    cds_written: int
+    rows_read: int
+    warnings_emitted: int
+
+
+def subset_gff3_by_mutation_prefixes(
+    gff3_path: str | os.PathLike,
+    table_path: str | os.PathLike,
+    delimiter: str = ",",
+    mutation_column: str = "mutation",
+    prefix_separator: str = ":",
+    strip_prefixes: bool = True,
+    gff_gene_feature_type: str = "gene",
+    gene_match_attr_key: str = "gene",
+    include_cds: bool = False,
+    cds_feature_type: str = "CDS",
+    cds_gene_attr_key: str = "gene",
+    output_path: str | os.PathLike | None = None,
+    encoding: str = "utf-8",
+) -> SubsetGffResult:
+    """
+    Subset a GFF3 file using unique gene-name prefixes derived from a table column.
+
+    This helper reads a CSV/TSV-like table (configurable delimiter), locates a column
+    named "mutation" case-insensitively (or a user-specified column name), and extracts
+    *prefixes* from each cell by splitting on `prefix_separator` and taking the portion
+    before the first separator. If a value does not contain the separator, a warning is
+    emitted (the whole value is still used as the prefix). Prefixes are de-duplicated.
+
+    The GFF3 is then streamed and filtered to keep:
+
+      1) All `gff_gene_feature_type` features (default: "gene") whose attributes contain
+         a value under any key in `gene_match_attr_keys` (default: ("Name", "gene"))
+         matching one of the unique prefixes.
+
+      2) Optionally, all `cds_feature_type` features (default: "CDS") whose attribute
+         `cds_gene_attr_key` (default: "gene") matches one of the unique prefixes.
+
+    Output is written as a valid GFF3 subset (preserving header/comment lines). If
+    `output_path` is None, the function returns results without writing. If `output_path`
+    is provided, the subset is written to that file.
+
+    Parameters
+    ----------
+    gff3_path:
+        Path to an input GFF3 file. Only plain text.
+    table_path:
+        Path to an input delimited table (CSV/TSV/etc.). Only plain text.
+    delimiter:
+        The table delimiter, e.g. "," for CSV or "\\t" for TSV.
+    mutation_column:
+        The name of the table column containing mutation strings. The column lookup is
+        case-insensitive.
+    prefix_separator:
+        Separator used to split mutation strings, e.g. ":" for values like "GENE:K123N".
+        The prefix is the substring before the first occurrence of this separator.
+    strip_prefixes:
+        If True, whitespace is stripped around extracted prefixes (and around whole
+        values when no separator is present).
+    gff_gene_feature_type:
+        Feature type to treat as the "gene" record in column 3 of GFF3 (default "gene").
+    gene_match_attr_keys:
+        Attribute keys in the GFF3 attribute column (9th field) to try when matching gene
+        features. Common choices include "Name", "gene", "ID", "locus_tag".
+    include_cds:
+        If True, also include CDS records whose attribute `cds_gene_attr_key` matches a
+        unique prefix.
+    cds_feature_type:
+        Feature type to include for coding sequence features (default "CDS").
+    cds_gene_attr_key:
+        Attribute key to use when matching CDS features (default "gene").
+    output_path:
+        Path to write the subset GFF3. If None, no file is written and only summary
+        statistics are returned.
+    encoding:
+        Text encoding for reading/writing.
+
+    Returns
+    -------
+    SubsetGffResult
+        Summary containing the set of unique prefixes, matched gene IDs, record counts,
+        and warnings emitted.
+
+    Raises
+    ------
+    FileNotFoundError
+        If either input path does not exist.
+    ValueError
+        If the mutation column cannot be found (case-insensitive) in the table header,
+        or if delimiter is invalid, or if GFF3 lines are malformed.
+    OSError
+        If an I/O error occurs reading or writing files.
+
+    Notes
+    -----
+    - The function is streaming: it does not load the entire GFF3 into memory.
+
+    - Attribute parsing follows the GFF3 convention of semicolon-separated key=value
+      fields in the 9th column. Values are URL-decoded only minimally (no full percent
+      decoding) to avoid surprising transformations; matching is performed on the raw
+      value string after stripping surrounding whitespace.
+
+    - Matching is exact, case-sensitive by default (consistent with typical gene IDs).
+      If you need case-insensitive matching, normalize prefixes and attributes upstream
+      (e.g. .upper()).
+
+    Examples
+    --------
+    >>> res = subset_gff3_by_mutation_prefixes(
+    ...     "annotations.gff3",
+    ...     "mutations.tsv",
+    ...     delimiter="\\t",
+    ...     include_cds=True,
+    ...     output_path="subset.gff3",
+    ... )
+    >>> sorted(list(res.unique_prefixes))[:5]
+    """
+
+    gff3_path = Path(gff3_path)
+    table_path = Path(table_path)
+
+    if not gff3_path.exists():
+        raise FileNotFoundError(f"GFF3 not found: {gff3_path}")
+    if not table_path.exists():
+        raise FileNotFoundError(f"Table not found: {table_path}")
+    if not delimiter or len(delimiter) != 1:
+        raise ValueError(f"Delimiter must be a single character; got {delimiter!r}")
+
+    warnings_emitted = 0
+
+    def _open_text(path: Path, mode: str) -> IO[Any]:
+        """
+        Open plain text or gzip-compressed files transparently, returning a text handle.
+        """
+        if "b" in mode:
+            raise ValueError("Binary mode not supported by _open_text; use text modes only.")
+        return path.open(mode=mode, encoding=encoding, newline="")
+
+    def _parse_gff3_attrs(attr_field: str) -> dict[str, str]:
+        """
+        Parse the 9th GFF3 column into a dict of key -> value.
+        """
+        attrs: dict[str, str] = {}
+        s = attr_field.strip()
+        if not s or s == ".":
+            return attrs
+        # GFF3: key=value;key2=value2
+        parts = s.split(";")
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if "=" not in part:
+                # Non-conforming attribute token; ignore but keep predictable behavior.
+                continue
+            k, v = part.split("=", 1)
+            k = k.strip()
+            v = v.strip()
+            if k:
+                attrs[k] = v
+        return attrs
+
+    # Read table and extract unique prefixes
+    unique_prefixes: set[str] = set()
+    rows_read = 0
+
+    with _open_text(table_path, "rt") as tf:
+        reader = csv.reader(tf, delimiter=delimiter)
+        try:
+            header = next(reader)
+        except StopIteration:
+            raise ValueError(f"Table appears empty: {table_path}")
+
+        # Find mutation column case-insensitively
+        target = mutation_column.strip().lower()
+        col_idx = None
+        for i, col in enumerate(header):
+            if col.strip().lower() == target:
+                col_idx = i
+                break
+        if col_idx is None:
+            raise ValueError(
+                f"Could not find a column named {mutation_column!r} (case-insensitive) "
+                f"in table header: {header!r}"
+            )
+
+        for row in reader:
+            rows_read += 1
+            if col_idx >= len(row):
+                # Ragged row: treat as missing
+                continue
+            raw = row[col_idx]
+            if raw is None:
+                continue
+            val = raw.strip() if strip_prefixes else str(raw)
+            if val == "":
+                continue
+
+            if prefix_separator in val:
+                prefix = val.split(prefix_separator, 1)[0]
+                prefix = prefix.strip() if strip_prefixes else prefix
+            else:
+                warnings_emitted += 1
+                print(
+                    f"Mutation value {val} did not contain separator {prefix_separator}; skipping entry."
+                )
+                continue
+
+            if prefix:
+                unique_prefixes.add(prefix)
+
+    # Early exit: nothing to match
+    if not unique_prefixes:
+        if output_path is not None:
+            # Still write header-only subset? Here we write only GFF header/comments if present.
+            outp = Path(output_path)
+            with _open_text(gff3_path, "rt") as gi, _open_text(outp, "wt") as go:
+                for line in gi:
+                    if line.startswith("#"):
+                        go.write(line)
+                    else:
+                        break
+        return SubsetGffResult(
+            unique_prefixes=set(),
+            matched_gene_ids=set(),
+            genes_written=0,
+            cds_written=0,
+            rows_read=rows_read,
+            warnings_emitted=warnings_emitted,
+        )
+
+    print(unique_prefixes)
+
+    # Stream GFF3 and filter
+    genes_written = 0
+    cds_written = 0
+    matched_gene_ids: set[str] = set()
+
+    def _should_keep_gene(
+        attrs: Mapping[str, str],
+        unique_prefixes: set[str],
+        gene_attr_key: str,
+    ) -> tuple[bool, str | None]:
+        """
+        Decide whether a gene feature should be kept based on a single attribute key.
+
+        Returns (keep, matched_value).
+        """
+        v = attrs.get(gene_attr_key)
+        if v is None:
+            return False, None
+
+        v = v.strip()
+        if v in unique_prefixes:
+            return True, v
+
+        return False, None
+
+    def _should_keep_cds(
+        attrs: Mapping[str, str],
+        unique_prefixes: set[str],
+        cds_gene_attr_key: str,
+    ) -> tuple[bool, str | None]:
+        """
+        Decide whether a CDS feature should be kept based on a single attribute key.
+
+        Returns (keep, matched_value).
+        """
+        v = attrs.get(cds_gene_attr_key)
+        if v is None:
+            return False, None
+
+        v = v.strip()
+        if v in unique_prefixes:
+            return True, v
+
+        return False, None
+
+    out_handle: IO[Any] | None = None
+    if output_path is not None:
+        outp = Path(output_path)
+        out_handle = _open_text(outp, "wt")
+
+    try:
+        with _open_text(gff3_path, "rt") as gi:
+            for line in gi:
+                if line.startswith("#"):
+                    if out_handle is not None:
+                        out_handle.write(line)
+                    continue
+
+                stripped = line.rstrip("\n")
+                if not stripped:
+                    continue
+                fields = stripped.split("\t")
+                if len(fields) != 9:
+                    raise ValueError(
+                        f"Malformed GFF3 line (expected 9 tab-separated fields): {stripped!r}"
+                    )
+
+                ftype = fields[2]
+                attrs = _parse_gff3_attrs(fields[8])
+
+                if ftype == gff_gene_feature_type:
+                    print(ftype, gff_gene_feature_type, attrs)
+                    keep, gid = _should_keep_gene(
+                        attrs,
+                        unique_prefixes,
+                        gene_attr_key=gene_match_attr_key,
+                    )
+                    print(keep, gid)
+                    if keep:
+                        genes_written += 1
+                        if gid is not None:
+                            matched_gene_ids.add(gid)
+                        if out_handle is not None:
+                            out_handle.write(line)
+                elif include_cds and ftype == cds_feature_type:
+                    keep, gid = _should_keep_cds(
+                        attrs,
+                        unique_prefixes,
+                        cds_gene_attr_key=cds_gene_attr_key,
+                    )
+                    if keep:
+                        cds_written += 1
+                        if gid is not None:
+                            matched_gene_ids.add(gid)
+                        if out_handle is not None:
+                            out_handle.write(line)
+                else:
+                    # Ignore other features
+                    continue
+    finally:
+        if out_handle is not None:
+            out_handle.close()
+
+    return SubsetGffResult(
+        unique_prefixes=unique_prefixes,
+        matched_gene_ids=matched_gene_ids,
+        genes_written=genes_written,
+        cds_written=cds_written,
+        rows_read=rows_read,
+        warnings_emitted=warnings_emitted,
+    )
