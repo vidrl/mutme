@@ -5,3 +5,10 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: bump-pyproject-version
+        name: Bump pyproject.toml version on fix/feat/hotfix
+        entry: hooks/bump_version_commit_msg.sh
+        language: system
+        stages: [commit-msg]
