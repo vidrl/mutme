@@ -12,9 +12,6 @@ pre_package_bump_hooks = []
 post_package_bump_hooks = []
 tag_prefix = "v"
 
-[git_hooks.pre-commit]
-path = "hooks/bump_version_pre_commit.sh"
-
 [commit_types]
 hotfix = { changelog_title = "Hotfixes" }
 release = { changelog_title = "Releases" }
