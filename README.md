@@ -39,7 +39,7 @@ interpret biological meaning beyond what you encode in your annotation table.
 - [Installation](#installation)
   - [Requirements](#requirements)
   - [Install from source](#install-from-source)
-  - [Install with Anaconda](#install-with-anaconda)
+  - [Install with dependencies](#install-with-dependencies)
 - [Quick Start](#quick-start)
 - [Annotations Table](#annotations-table)
   - [How to write the annotations table](#how-to-write-the-annotations-table)
@@ -64,21 +64,15 @@ interpret biological meaning beyond what you encode in your annotation table.
 ### Install from source
 
 ```bash
-pip install git+https://github.com/vidrl/mutme
+pip install mutme
 ```
 
-### Install with Anaconda
+### Install with dependencies
 
 ```bash
 mamba create -n mutme -c conda-forge -c bioconda python=3.14 nextclade=3.18
 mamba activate mutme
-pip install git+https://github.com/vidrl/mutme
-```
-
-Directly from repository:
-
-```bash
-mamba create -f https://raw.githubusercontent.com/vidrl/mutme/main/conda.yml
+pip install mutme
 ```
 
 ## Quick Start
