@@ -355,6 +355,8 @@ def write_long_format_table(
     annotation_field_order: Sequence[str] | None = None,
     # Delimiter
     delimiter: str = ",",
+    # Output columns
+    all_annotation_fields: Sequence[str] | None = None,
 ) -> Path:
     """
     Write a flat CSV in *long* format: one row per (sequence, hit mutation).
@@ -363,28 +365,52 @@ def write_long_format_table(
     --------------
     Always included:
     - seq_name (configurable via `seq_name_col`)
-    - seq_quality (configurable via `seq_quality_col`)
+    - seq_quality (configurable via `seq_qc_col`)
     - mutation (configurable via `mutation_col`)
-    - all annotation columns present across `reports[*].hits[*].annotations`
+    - one column per annotation field
 
-    Optionally included:
-    - detected_aa_substitutions: comma-joined list of all AA substitutions Nextclade reported
+    Annotation columns
+    ------------------
+    By default, annotation columns are the union of all annotation keys observed
+    across `reports[*].hits[*].annotations`.
+
+    If `all_annotation_fields` is provided, the output will *always* include those
+    columns, even if some (or all) of them are not present in any hit. Missing
+    values are emitted as empty strings.
+
+    Column ordering is controlled by `annotation_field_order` if provided; any
+    unspecified fields are appended in sorted order.
+
+    The special annotation column "comment" is not included in `all_annotation_fields`
+    and is emitted only when `include_mutation_comments=True`.
+
+    Optionally included columns
+    ----------------------------
+    - detected_aa_substitutions: comma-joined list of all AA substitutions reported
+      by Nextclade for the sequence
     - detected_aa_indels: comma-joined list of all AA indels (deletions + insertions)
+    - comment: mutation-specific comments, if `include_mutation_comments=True`
 
     Parameters
     ----------
     reports:
         Output of `compare_nextclade_to_annotations()`.
-    out_tsv:
-        Output path for the TSV.
+    output:
+        Output path for the CSV.
     include_sequences_with_no_hits:
         If True, emits one row per sequence even when there are no hits, with the
-        mutation column empty and annotations empty.
+        mutation column empty and all annotation fields empty.
     include_detected_lists:
-        If True, includes the detected mutation lists for auditing/debugging.
+        If True, includes detected mutation lists for auditing/debugging.
     annotation_field_order:
-        Optional explicit ordering for annotation columns (any unspecified fields
-        will be appended in sorted order).
+        Optional explicit ordering for annotation columns. Fields not listed here
+        will be appended in sorted order.
+    all_annotation_fields:
+        Optional explicit universe of annotation columns to emit. If provided,
+        these columns are always included in the output header regardless of
+        whether they appear in any hit.
+    delimiter:
+        Delimiter for the output file.
 
     Returns
     -------
@@ -393,18 +419,23 @@ def write_long_format_table(
 
     Notes
     -----
-    - This writer unions annotation keys across all hits to build the header.
-    - For a stable, deterministic output, headers are sorted unless an explicit
-      `annotation_field_order` is provided.
+    - This writer does not modify or normalize annotation values.
+    - Providing `all_annotation_fields` is recommended when a stable schema is
+      required across runs or datasets.
     """
     out_path = Path(output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Union all annotation fields across hits (comments are now separate)
-    all_fields: set[str] = set()
-    for r in reports:
-        for h in r.hits:
-            all_fields.update(h.annotations.keys())
+    # Determine the universe of annotation fields.
+    if all_annotation_fields is None:
+        # existing behavior: union across hits (comments are now separate)
+        all_fields: set[str] = set()
+        for r in reports:
+            for h in r.hits:
+                all_fields.update(h.annotations.keys())
+    else:
+        # new behavior: always output these columns
+        all_fields = {f for f in all_annotation_fields if f}
 
     # Determine annotation header order.
     if annotation_field_order is None:
@@ -465,6 +496,70 @@ def write_long_format_table(
                 writer.writerow(row)
 
     return out_path
+
+
+def get_annotation_fields(
+    annotations_csv: str | os.PathLike[str],
+    mutation_col: str = "mutation",
+    delimiter: str = ",",
+) -> list[str]:
+    """
+    Extract annotation column names from an annotation CSV/TSV.
+
+    This function reads only the header row and returns all column names except
+    the mutation column. Resolution of the mutation column name is
+    case-insensitive.
+    Intended use is to obtain the full set of possible annotation fields for
+    downstream reporting (e.g. forcing a stable output schema in
+    `write_long_format_table`).
+
+    The optional "comment" column is excluded from the returned list.
+
+    Parameters
+    ----------
+    annotation_tsv:
+        Path to the annotation file.
+    mutation_col:
+        Name of the mutation column. Matching is case-insensitive.
+    delimiter:
+        Delimiter used by the file (\",\" for CSV, \"\\t\" for TSV, etc).
+
+    Returns
+    -------
+    list[str]
+        List of annotation column names in file order, excluding the mutation
+        column and the optional comment column
+
+    Raises
+    ------
+    FileNotFoundError:
+        If the file does not exist.
+    InputFormatError:
+        If the file has no header row or the mutation column is missing or
+        ambiguous.
+    """
+    path = Path(annotations_csv)
+    with path.open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        if reader.fieldnames is None:
+            raise InputFormatError(f"Annotation file has no header row: {path}")
+
+    fieldnames = list(reader.fieldnames)
+
+    matches = [c for c in fieldnames if c.casefold() == mutation_col.casefold()]
+    if not matches:
+        raise InputFormatError(
+            f"Annotation file missing required column '{mutation_col}' (case-insensitive): {path}"
+        )
+    if len(matches) > 1:
+        raise InputFormatError(
+            f"Ambiguous mutation column: multiple headers match '{mutation_col}' case-insensitively: "
+            f"{matches} in {path}"
+        )
+    resolved_mutation_col = matches[0]
+
+    # Keep all non-mutation/non-comment columns
+    return [c for c in fieldnames if c != resolved_mutation_col and c.casefold() != "comment"]
 
 
 # Annotation accepts formats: {gene}:{pos} (Nextclade) and {gene}:{aa}{pos}* (general)

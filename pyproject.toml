@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mutme"
-version = "0.1.0"
+version = "0.1.1"
 urls = { Homepage = "https://github.com/vidrl/mutme" }
 description = "Generic mutation and mutation-of-interest calling from consensus genomes"
 readme = "README.md"
