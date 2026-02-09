@@ -305,6 +305,7 @@ def run_nextclade(
     extra_args: Sequence[str] = (),
     env: Mapping[str, str] | None = None,
     timeout_s: float | None = None,
+    threads: int | None = None,
 ) -> tuple[NextcladeTabularOutput, CommandResult]:
     """
     Run Nextclade (v3.x) *without a dataset*, using only reference FASTA + GFF3 annotation,
@@ -378,6 +379,10 @@ def run_nextclade(
 
     # Nextclade expects a comma-separated list.
     args.extend(["--output-columns-selection", ",".join(DEFAULT_MUTATION_COLUMNS)])
+
+    # Jobs specification
+    if threads is not None:
+        args.extend(["--jobs", str(threads)])
 
     args.extend(list(extra_args))
 
