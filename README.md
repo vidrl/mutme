@@ -201,11 +201,14 @@ Input sequence file `sequences.fasta` may contain **one or many consensus sequen
 
 #### Required options
 
+Either `--reference` + `--gff` or `--nextclade-tsv` must be provided.
+
 | Option | Description |
 |------|-------------|
 | `--sequences`, `-s` | Input FASTA with one or more consensus sequences |
 | `--reference`, `-r` | Reference genome FASTA |
 | `--gff`, `-g` | Genome annotation in GFF3 format |
+| `--nextclade-tsv`, `-n` | Precomputed Nextclade TSV output (alternative to `--reference` + `--gff`)
 | `--annotations`, `-a` | Mutation annotation table (CSV/TSV) |
 | `--output`, `-o` | Output file path (CSV/TSV) |
 
@@ -218,12 +221,37 @@ Input sequence file `sequences.fasta` may contain **one or many consensus sequen
 | `--annotations-delimiter` | Delimiter used by annotation table (default `,`, use `\t` for TSV) |
 | `--output-delimiter` | Delimiter for output table (default `,`) |
 | `--include-comments`, `-c` | Include a `comment` column in output if present in annotation table |
-| `--alignment-preset` | Nextclade alignment preset (`default`, `high-diversity`, `short-sequences`) |
+| `--alignment-preset`, `-p` | Nextclade alignment preset (`default`, `high-diversity`, `short-sequences`) |
 | `--nextclade-bin` | Path or name of Nextclade executable (default `nextclade`) |
 | `--nextclade-extra-args` | Extra arguments passed directly to Nextclade |
 | `--nextclade-keep-tsv` | Keep intermediate Nextclade TSV output |
 
 ---
+
+#### Example: running Nextclade with limited threads
+
+```bash
+mutme run \
+  -s sequences.fasta \
+  -r reference.fasta \
+  -g reference.gff3 \
+  -a mutations.csv \
+  -o results.csv \
+  -t 8
+```
+
+#### Example: precomputed Nextclade TSV
+
+```bash
+mutme run \
+  -s sequences.fasta \
+  -n results.nextclade.tsv \
+  -a mutations.csv \
+  -o results.csv
+```
+
+> [!NOTE]
+When --nextclade-tsv is provided, --reference and --gff must not be specified and Nextclade is not executed.
 
 #### Example: TSV annotations, CSV output
 
@@ -232,7 +260,7 @@ mutme run \
   -s sequences.fasta \
   -r reference.fasta \
   -g reference.gff3 \
-  -a annotations.tsv \
+  -a mutations.tsv \
   -o results.csv \
   --annotations-delimiter '\t'
 ```

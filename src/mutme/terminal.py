@@ -1,6 +1,7 @@
 import json
 import shlex
 from collections.abc import Sequence
+from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
@@ -61,19 +62,59 @@ def main(
     pass
 
 
+@dataclass(frozen=True)
+class NextcladeInputs:
+    tsv: Path | None
+    reference: Path | None
+    gff: Path | None
+
+
+def resolve_nextclade_source(
+    nextclade_tsv: Path | None,
+    reference: Path | None,
+    gff: Path | None,
+) -> tuple[Path | None, Path | None, Path | None]:
+    """
+    Returns (precomputed_tsv, reference, gff) after validating combinations.
+
+    If precomputed_tsv is not None => reference and gff must be None.
+    If precomputed_tsv is None => reference and gff must both be provided.
+    """
+    if nextclade_tsv:
+        if reference or gff:
+            raise typer.BadParameter("Use --nextclade-tsv OR (--reference and --gff) not both.")
+        return nextclade_tsv, None, None
+
+    if not reference or not gff:
+        missing = [opt for opt, val in (("--reference", reference), ("--gff", gff)) if not val]
+        raise typer.BadParameter(
+            f"Missing required option(s): {', '.join(missing)}. Provide them or use --nextclade-tsv."
+        )
+    return None, reference, gff
+
+
 @app.command()
 def run(
     sequences: Path = typer.Option(
         ..., "--sequences", "-s", exists=True, help="Input sequences FASTA"
     ),
-    reference: Path = typer.Option(..., "--reference", "-r", exists=True, help="Reference FASTA"),
-    gff: Path = typer.Option(..., "--gff", "-g", exists=True, help="Annotation GFF3"),
     annotations: Path = typer.Option(
         ...,
         "--annotations",
         "-a",
         exists=True,
         help="Annotation table - must contain 'mutation' column that matches format of 'aaSubstitution', 'aaDeletion' or 'aaInsertion' from Nextclade",
+    ),
+    reference: Path | None = typer.Option(
+        None, "--reference", "-r", exists=True, help="Reference FASTA"
+    ),
+    gff: Path | None = typer.Option(None, "--gff", "-g", exists=True, help="Annotation GFF3"),
+    nextclade_tsv: Path | None = typer.Option(
+        None,
+        "--nextclade-tsv",
+        "-n",
+        exists=True,
+        help="Precomputed Nextclade TSV. If provided, --reference/--gff are not used.",
     ),
     annotations_delimiter: str = typer.Option(
         ",",
@@ -118,44 +159,71 @@ def run(
         help="Keep the Nextclade TSV output in the current working directory on completion",
         show_default=True,
     ),
+    nextclade_threads: int | None = typer.Option(
+        None,
+        "--nextclade-threads",
+        "-t",
+        min=1,
+        help="Number of threads to use for Nextclade (default: all available)",
+    ),
 ) -> None:
     """
     Run Nextclade (reference + GFF), match AA mutations against an annotation table,
     and write a long-format TSV (one row per sequence × mutation hit).
     """
 
-    out_nextclade_tsv = output.with_suffix(".nextclade.tsv")
+    precomputed_tsv, reference, gff = resolve_nextclade_source(
+        nextclade_tsv=nextclade_tsv,
+        reference=reference,
+        gff=gff,
+    )
 
-    typer.echo("Running Nextclade…")
-    nextclade_args = shlex.split(nextclade_extra_args) if nextclade_extra_args else []
+    produced_nextclade_tsv: Path | None = None
 
-    try:
-        nextclade_output, _ = run_nextclade(
-            sequences_fasta=sequences,
-            reference_fasta=reference,
-            annotation_gff3=gff,
-            out_tsv=out_nextclade_tsv,
-            alignment_preset=alignment_preset,
-            nextclade_bin=nextclade_bin,
-            extra_args=nextclade_args,
-        )
-    except CommandExecutionError as e:
-        log_command_result(e, "nextclade.error.log")
-        raise
+    if precomputed_tsv:
+        nextclade_file = precomputed_tsv
+    else:
+        out_nextclade_tsv = output.with_suffix(".nextclade.tsv")
+        produced_nextclade_tsv = out_nextclade_tsv
+
+        typer.echo("Running Nextclade…")
+        nextclade_args = shlex.split(nextclade_extra_args) if nextclade_extra_args else []
+
+        assert (
+            reference is not None and gff is not None
+        )  # guaranteed non-None here but for type checking
+
+        try:
+            nextclade_output, _ = run_nextclade(
+                sequences_fasta=sequences,
+                reference_fasta=reference,
+                annotation_gff3=gff,
+                out_tsv=out_nextclade_tsv,
+                alignment_preset=alignment_preset,
+                nextclade_bin=nextclade_bin,
+                extra_args=nextclade_args,
+                threads=nextclade_threads,
+            )
+        except CommandExecutionError as e:
+            log_command_result(e, "nextclade.error.log")
+            raise
+
+        nextclade_file = nextclade_output.tsv
 
     typer.echo("Comparing mutations to annotation table…")
     reports = compare_nextclade_to_annotations(
-        nextclade_tsv=nextclade_output.tsv,
+        nextclade_tsv=nextclade_file,
         annotation_csv=annotations,
         delimiter=_parse_delimiter(annotations_delimiter),
     )
 
-    if output_all_columns:
-        annotation_fields = get_annotation_fields(
+    annotation_fields = (
+        get_annotation_fields(
             annotations_csv=annotations, delimiter=_parse_delimiter(annotations_delimiter)
         )
-    else:
-        annotation_fields = None
+        if output_all_columns
+        else None
+    )
 
     typer.echo("Writing long-format output table")
     write_long_format_table(
@@ -166,12 +234,13 @@ def run(
         all_annotation_fields=annotation_fields,
     )
 
-    cleanup = cleanup_file(nextclade_output.tsv, keep=nextclade_keep_tsv, missing_ok=True)
-    if cleanup.removed:
-        typer.echo(f"Nextclade output removed: {cleanup.path}")
-    else:
-        # Failure of cleanup is not fatal
-        typer.echo(f"Nextclade cleanup: {cleanup.reason} ({cleanup.path})")
+    # Cleanup only if we actually produced a TSV ourselves
+    if produced_nextclade_tsv is not None:
+        cleanup = cleanup_file(produced_nextclade_tsv, keep=nextclade_keep_tsv, missing_ok=True)
+        if cleanup.removed:
+            typer.echo(f"Nextclade output removed: {cleanup.path}")
+        else:
+            typer.echo(f"Nextclade cleanup: {cleanup.reason} ({cleanup.path})")
 
     typer.echo(f"Done → {output}")
 
