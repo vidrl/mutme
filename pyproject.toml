@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mutme"
-version = "0.1.1"
+version = "0.1.2"
 urls = { Homepage = "https://github.com/vidrl/mutme" }
 description = "Generic mutation and mutation-of-interest calling from consensus genomes"
 readme = "README.md"
@@ -14,8 +14,34 @@ authors = [
   { name = "Eike J. Steinig", email = "eike.steinig@mh.org.au" }
 ]
 
+classifiers = [
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
+keywords = [
+  "virology",
+  "viral-genomics",
+  "bioinformatics",
+  "genome-annotation",
+  "mutation-annotation",
+  "mutation-calling",
+  "variant-analysis",
+  "amino-acid-mutations",
+  "consensus-genomes",
+  "genotype-phenotype",
+  "antiviral-resistance",
+  "lineage-markers",
+  "nextclade",
+]
+
 dependencies = [
-  "typer==0.21.1"
+  "typer>=0.21"
 ]
 
 [project.optional-dependencies]
@@ -30,11 +56,15 @@ dev = [
 [project.scripts]
 mutme = "mutme.terminal:app"
 
+
+
+
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
+exclude = ["tests*", "docs*", "hooks*"]
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py310"
 line-length = 100
 fix = false
 

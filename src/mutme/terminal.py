@@ -1,6 +1,7 @@
 import json
 import shlex
 from collections.abc import Sequence
+from importlib.metadata import version
 from pathlib import Path
 
 import typer
@@ -38,6 +39,26 @@ def _parse_delimiter(delim: str) -> str:
     if len(delim) != 1:
         raise typer.BadParameter(f"Delimiter must be a single character (or '\\t'); got {delim!r}")
     return delim
+
+
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"{version('mutme')}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        help="Show version and exit",
+        callback=version_callback,
+        is_eager=True,
+    ),
+):
+    pass
 
 
 @app.command()
@@ -327,6 +348,3 @@ def subset_gff3(
     except Exception as e:
         # Make unexpected errors clearly visible and return non-zero.
         raise typer.Exit(code=1) from e
-
-
-app()
