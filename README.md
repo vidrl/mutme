@@ -208,7 +208,7 @@ Either `--reference` + `--gff` or `--nextclade-tsv` must be provided.
 | `--sequences`, `-s` | Input FASTA with one or more consensus sequences |
 | `--reference`, `-r` | Reference genome FASTA |
 | `--gff`, `-g` | Genome annotation in GFF3 format |
-| `--nextclade-tsv`, `-n` | Precomputed Nextclade TSV output (alternative to `--reference` + `--gff`)
+| `--nextclade-tsv`, `-n` | Precomputed Nextclade TSV output (alternative to `--reference` + `--gff`) |
 | `--annotations`, `-a` | Mutation annotation table (CSV/TSV) |
 | `--output`, `-o` | Output file path (CSV/TSV) |
 
@@ -218,13 +218,14 @@ Either `--reference` + `--gff` or `--nextclade-tsv` must be provided.
 
 | Option | Description |
 |------|-------------|
-| `--annotations-delimiter` | Delimiter used by annotation table (default `,`, use `\t` for TSV) |
-| `--output-delimiter` | Delimiter for output table (default `,`) |
 | `--include-comments`, `-c` | Include a `comment` column in output if present in annotation table |
 | `--alignment-preset`, `-p` | Nextclade alignment preset (`default`, `high-diversity`, `short-sequences`) |
-| `--nextclade-bin` | Path or name of Nextclade executable (default `nextclade`) |
+|`--nextclade-threads`, `-t` | Number of threads to use for Nextclade (default: all available) |
 | `--nextclade-extra-args` | Extra arguments passed directly to Nextclade |
 | `--nextclade-keep-tsv` | Keep intermediate Nextclade TSV output |
+| `--nextclade-bin` | Path or name of Nextclade executable (default `nextclade`) |
+| `--annotations-delimiter` | Delimiter used by annotation table (default `,`, use `\t` for TSV) |
+| `--output-delimiter` | Delimiter for output table (default `,`) |
 
 ---
 
