@@ -13,8 +13,14 @@ post_package_bump_hooks = []
 tag_prefix = "v"
 
 [commit_types]
+fix = { changelog_title = "Fixes" }
 hotfix = { changelog_title = "Hotfixes" }
 release = { changelog_title = "Releases" }
+
+chore = { changelog_title = "", omit_from_changelog = true }
+ci   = { changelog_title = "", omit_from_changelog = true }
+build = { changelog_title = "", omit_from_changelog = true }
+test = { changelog_title = "", omit_from_changelog = true }
 
 [changelog]
 path = "CHANGELOG.md"
