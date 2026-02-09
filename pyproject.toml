@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "mutme"
 version = "0.1.3"
 urls = { Homepage = "https://github.com/vidrl/mutme" }
-description = "Generic mutation and mutation-of-interest calling from consensus genomes"
+description = "Generic mutation and mutation-of-interest calling from viral consensus genomes"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
