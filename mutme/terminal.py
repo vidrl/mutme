@@ -5,7 +5,11 @@ from pathlib import Path
 
 import typer
 
-from .mutation import compare_nextclade_to_annotations, write_long_format_table
+from .mutation import (
+    compare_nextclade_to_annotations,
+    get_annotation_fields,
+    write_long_format_table,
+)
 from .presets import (
     transform_3clpro_inhibitor_resistance_table,
     transform_rdrp_inhibitor_resistance_table,
@@ -65,6 +69,12 @@ def run(
         help="Annotation delimiter - default is comma-delimited for CSV",
         show_default=True,
     ),
+    output_all_columns: bool = typer.Option(
+        True,
+        "--output-all-columns/--no-output-all-columns",
+        help="Output all annotation columns for consistent data format",
+        show_default=True,
+    ),
     include_comments: bool = typer.Option(
         False,
         "--include-comments",
@@ -119,12 +129,20 @@ def run(
         delimiter=_parse_delimiter(annotations_delimiter),
     )
 
+    if output_all_columns:
+        annotation_fields = get_annotation_fields(
+            annotations_csv=annotations, delimiter=_parse_delimiter(annotations_delimiter)
+        )
+    else:
+        annotation_fields = None
+
     typer.echo("Writing long-format output table")
     write_long_format_table(
         reports,
         output=output,
         delimiter=_parse_delimiter(output_delimiter),
         include_mutation_comments=include_comments,
+        all_annotation_fields=annotation_fields,
     )
 
     cleanup = cleanup_file(nextclade_output.tsv, keep=nextclade_keep_tsv, missing_ok=True)
