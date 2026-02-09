@@ -251,9 +251,6 @@ mutme run \
   -o results.csv
 ```
 
-> [!NOTE]
-When --nextclade-tsv is provided, --reference and --gff must not be specified and Nextclade is not executed.
-
 #### Example: TSV annotations, CSV output
 
 ```bash
