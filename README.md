@@ -192,7 +192,8 @@ sample_03,mediocre,S:87-,,"",,Deletion at position 87
 ```
 
 > [!NOTE]
-> The output keeps your original columns (and their values) attached to each mutation hit. A sequence with no hits won’t appear in the output unless you choose to emit empty rows (not enabled by default).
+> By default the output keeps all annotations columns (disable with `--no-output-all-columns`), as well as your input sequences (disable with: `--no-output-all-sequences`). 
+Sequences without detected mutations will have empty annotation fields. If any output value includes an output delimiter (`--output-delimiter`) the value will be quoted (`""`).
 
 ## Command reference
 
@@ -249,7 +250,6 @@ Either `--reference` + `--gff` or `--nextclade-tsv` must be provided.
 | `--output-delimiter` | Delimiter for output table (default `,`) |
 | `--allow-x-wildcards` | Treat `X` in annotation-table substitutions/insertions as a wildcard for any single amino acid |
 | `--x-charset` | Allowed amino-acid characters that `X` can match when `--allow-x-wildcards` is enabled (default: 20 canonical AAs) |
-
 
 ---
 

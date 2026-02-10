@@ -137,6 +137,16 @@ def run(
         help="Output all annotation columns for consistent data format",
         show_default=True,
     ),
+    output_all_sequences: bool = typer.Option(
+        True,
+        "--output-all-sequences/--no-output-all-sequences",
+        help=(
+            "Include sequences with no matched mutations in the output. "
+            "When enabled, one row per sequence is emitted with an empty mutation "
+            "column and empty annotation fields."
+        ),
+        show_default=True,
+    ),
     include_comments: bool = typer.Option(
         False,
         "--include-comments",
@@ -253,6 +263,7 @@ def run(
         delimiter=_parse_delimiter(output_delimiter),
         include_mutation_comments=include_comments,
         all_annotation_fields=annotation_fields,
+        include_sequences_with_no_hits=output_all_sequences,
     )
 
     # Cleanup only if we actually produced a TSV ourselves
