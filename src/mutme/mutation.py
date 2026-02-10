@@ -8,6 +8,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
+
 
 class InputFormatError(ValueError):
     """Raised when an input TSV is missing required columns or is otherwise malformed."""
@@ -69,11 +71,18 @@ class SequenceMutationHit:
     Attributes
     ----------
     mutation:
-        Mutation string in Nextclade format (e.g., 'N:R203K', 'S:214:EPE', 'N:E31-').
+        Mutation string in Nextclade format (e.g. 'N:R203K', 'S:214:EPE', 'N:E31-').
+        When wildcard matching is enabled, this is the *detected* mutation string
+        (not the wildcard key from the annotation table).
     comments:
         Comments if provided in the annotations table for this mutation.
+        When wildcard matching is enabled and multiple annotation keys match a
+        detected mutation, comments are merged using the same merge semantics as
+        other fields (concatenated with '; ' while avoiding duplicates).
     annotations:
-        Mapping of annotation fields for this mutation.
+        Mapping of annotation fields for this mutation (excluding comments).
+        When wildcard matching is enabled and multiple annotation keys match a
+        detected mutation, field values are merged.
     """
 
     mutation: str
@@ -218,6 +227,9 @@ def compare_nextclade_to_annotations(
     mutation_col: str = "mutation",
     # Optional delimiter for annotation file
     delimiter: str = ",",
+    # Wildcard mutations
+    allow_x_wildcards: bool = False,
+    x_charset: str = AMINO_ACIDS,
 ) -> list[SequenceAnnotationReport]:
     """
     Compare Nextclade AA substitutions/indels to an annotation table CSV.
@@ -225,7 +237,33 @@ def compare_nextclade_to_annotations(
     The annotation CSV must contain a `mutation` column and may contain any number
     of additional columns with arbitrary headers (all treated as string annotations).
 
-    Matching is performed by **exact string match** after optional normalization.
+
+    Mutation matching logic
+    -----------------------
+    Matching is performed by **exact string match** or translated alternative string
+    matches (deletion, stop) by default considering the allowed annotation formats
+    from the input table:
+
+    - Substitution: `{gene}:{aa}{pos}{aa}` e.g. `S:N87Y`
+    - Deletion: `{gene}:{pos}-` or `{gene}:{aa}{pos}-` e.g. `S:87-` or `S:N87-`
+    - Insertion: `{gene}:{pos}{aa-ins}` (`S:214:EPE`)
+    - Stop codon: `{gene}:{aa}{pos}*` or `{gene}:{pos}` e.g. `S:N87*` or `S:87`
+
+
+    Optional wildcard matching
+    --------------------------
+    If `allow_x_wildcards=True`, annotation-table mutation keys containing 'X' may
+    match detected Nextclade mutations where 'X' stands for any single amino-acid
+    character in `x_charset`.
+
+    Wildcards are supported for:
+    - Substitutions: {gene}:{ref}{pos}X
+    - Insertions:   {gene}:{pos}:{ins} where {ins} may include one or more 'X'
+
+    When multiple annotation keys (exact and/or wildcard) match a single detected
+    mutation, their annotation fields (and comments) are merged and a single hit
+    is emitted for that detected mutation.
+
 
     Returns
     -------
@@ -247,6 +285,15 @@ def compare_nextclade_to_annotations(
         delimiter=delimiter,
     )
     annotation_keys = set(annotations.keys())
+
+    if allow_x_wildcards:
+        exact_keys, wildcard_rules = _compile_x_wildcard_rules(
+            annotation_keys,
+            x_charset=x_charset,
+        )
+    else:
+        exact_keys = annotation_keys
+        wildcard_rules = []
 
     # STOP CODONS: build lookup from annotation stop keys
     stop_lookup = _build_stop_lookup(annotation_keys)
@@ -306,21 +353,33 @@ def compare_nextclade_to_annotations(
 
             hits: list[SequenceMutationHit] = []
 
-            for mut in sorted(all_aa):
-                if mut not in annotation_keys:
+            for detected_mut in sorted(all_aa):
+                matched_keys: list[str] = []
+
+                # 1) exact match
+                if detected_mut in exact_keys:
+                    matched_keys.append(detected_mut)
+
+                # 2) wildcard matches (annotation keys containing X)
+                if wildcard_rules:
+                    for rule in wildcard_rules:
+                        if rule.pattern.match(detected_mut):
+                            matched_keys.append(rule.anno_key)
+
+                if not matched_keys:
                     continue
 
-                anno = annotations[mut]
-                mut_comment = (anno.get("comment") or "").strip()
+                # Merge all matching annotation dicts (exact + wildcard).
+                merged = _merge_annotation_dicts_for_keys(annotations, matched_keys)
 
-                # exclude comments from generic annotations
-                hit_annos = {k: v for k, v in anno.items() if k != "comment"}
+                merged_comment = (merged.get("comment") or "").strip()
+                merged_annos = {k: v for k, v in merged.items() if k != "comment"}
 
                 hits.append(
                     SequenceMutationHit(
-                        mutation=mut,
-                        comments=mut_comment,
-                        annotations=hit_annos,
+                        mutation=detected_mut,  # always the detected mutation
+                        comments=merged_comment,
+                        annotations=merged_annos,
                     )
                 )
 
@@ -627,3 +686,142 @@ def _build_del_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[s
             continue
         out[parsed].append(key)
     return dict(out)
+
+
+# Substitution (Nextclade style): {gene}:{ref}{pos}{alt}
+# Example: S:N87Y
+# Allow alt to be 'X' in annotation keys for wildcard matching.
+_SUB_RE = re.compile(r"^(?P<gene>[^:]+):(?P<ref>[A-Za-z])(?P<pos>\d+)(?P<alt>[A-Za-z])$")
+
+# Insertion (Nextclade style): {gene}:{pos}:{ins}
+# Example: S:214:EPE
+# Allow ins to contain one or more 'X' in annotation keys for wildcard matching.
+_INS_RE = re.compile(r"^(?P<gene>[^:]+):(?P<pos>\d+):(?P<ins>[A-Za-z]+)$")
+
+
+@dataclass(frozen=True, slots=True)
+class _WildcardRule:
+    """
+    Compiled wildcard rule derived from an annotation-table mutation key containing 'X'.
+
+    Attributes
+    ----------
+    pattern:
+        Compiled regex matching Nextclade mutation tokens.
+    anno_key:
+        Original annotation-table mutation key this rule represents.
+    """
+
+    pattern: re.Pattern[str]
+    anno_key: str
+
+
+def _escape_except_x(s: str, *, x_charset: str) -> str:
+    """
+    Escape a literal string for regex, translating 'X' into a single-AA wildcard class.
+
+    Parameters
+    ----------
+    s:
+        Input string to translate.
+    x_charset:
+        Allowed characters for 'X'. Used to build a character class.
+
+    Returns
+    -------
+    str
+        Regex-safe string where literal content is escaped and 'X' is replaced with
+        a single-character class.
+    """
+    # Escape everything, then un-escape the placeholder we insert for X.
+    # We'll do this robustly by building the regex piecewise.
+    aa_class = f"[{re.escape(x_charset)}]"
+    parts: list[str] = []
+    for ch in s:
+        if ch == "X":
+            parts.append(aa_class)
+        else:
+            parts.append(re.escape(ch))
+    return "".join(parts)
+
+
+def _compile_x_wildcard_rules(
+    annotation_keys: set[str],
+    *,
+    x_charset: str,
+) -> tuple[set[str], list[_WildcardRule]]:
+    """
+    Split annotation keys into exact keys and compiled 'X' wildcard rules.
+
+    Only two mutation formats are eligible for wildcard compilation:
+    - Substitution: {gene}:{ref}{pos}{alt} (alt may be 'X')
+    - Insertion:   {gene}:{pos}:{ins}     (ins may contain 'X')
+
+    Any annotation key containing 'X' that does not match either of these formats
+    is treated as a literal exact key (i.e. no wildcard semantics applied).
+    """
+    exact: set[str] = set()
+    rules: list[_WildcardRule] = []
+
+    for key in annotation_keys:
+        if "X" not in key:
+            exact.add(key)
+            continue
+
+        s = key.strip()
+
+        m = _SUB_RE.match(s)
+        if m:
+            # Only treat X as wildcard in the *alt* position (final AA).
+            # If ref is X (weird), do not wildcard it.
+            alt = m.group("alt")
+            if alt != "X":
+                exact.add(key)
+                continue
+
+            gene = m.group("gene")
+            ref = m.group("ref")
+            pos = m.group("pos")
+            pat = re.compile(rf"^{re.escape(gene)}:{re.escape(ref)}{pos}[{re.escape(x_charset)}]$")
+            rules.append(_WildcardRule(pattern=pat, anno_key=key))
+            continue
+
+        m = _INS_RE.match(s)
+        if m:
+            gene = m.group("gene")
+            pos = m.group("pos")
+            ins = m.group("ins")
+            # Allow X anywhere in insertion string, each X == one AA.
+            ins_pat = _escape_except_x(ins, x_charset=x_charset)
+            pat = re.compile(rf"^{re.escape(gene)}:{pos}:{ins_pat}$")
+            rules.append(_WildcardRule(pattern=pat, anno_key=key))
+            continue
+
+        # Unsupported 'X' placement/format: treat as literal exact key.
+        exact.add(key)
+
+    return exact, rules
+
+
+def _merge_annotation_dicts_for_keys(
+    annotations: Mapping[str, Mapping[str, str]],
+    anno_keys: Sequence[str],
+) -> dict[str, str]:
+    """
+    Merge annotation dictionaries for multiple matching annotation keys.
+
+    Merge semantics:
+    - Per field: merge non-empty values with `_merge_field_value`.
+    - Missing keys are ignored.
+    """
+    merged: dict[str, str] = {}
+    for k in anno_keys:
+        d = annotations.get(k)
+        if not d:
+            continue
+        for field, val in d.items():
+            v = (val or "").strip()
+            if not v:
+                continue
+            merged[field] = _merge_field_value(merged.get(field, ""), v)
+    return merged
