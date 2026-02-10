@@ -1,3 +1,9 @@
+## [v0.3.0](https://github.com/vidrl/mutme/compare/v0.2.0..v0.3.0) - 2026-02-10
+#### Features
+- Output all sequences by default (--output-all-sequences) (vidrl/binfie-tasks#14) - ([e7346bf](https://github.com/vidrl/mutme/commit/e7346bf086bf0e4b0c463b5170bf86102ab8b89a)) - esteinig
+
+- - -
+
 ## [v0.2.0](https://github.com/vidrl/mutme/compare/v0.1.3..v0.2.0) - 2026-02-10
 #### Features
 - Wildcard matching (X) for annotation table mutation targets (vidrl/binfie-tasks#14) - ([59bec54](https://github.com/vidrl/mutme/commit/59bec54302d494b3a913083793f03f31361004cc)) - esteinig

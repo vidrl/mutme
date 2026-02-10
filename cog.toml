@@ -21,6 +21,7 @@ chore = { changelog_title = "", omit_from_changelog = true }
 ci   = { changelog_title = "", omit_from_changelog = true }
 build = { changelog_title = "", omit_from_changelog = true }
 test = { changelog_title = "", omit_from_changelog = true }
+docs = { changelog_title = "", omit_from_changelog = true }
 
 [changelog]
 path = "CHANGELOG.md"
