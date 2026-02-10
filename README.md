@@ -102,10 +102,12 @@ Your annotation table must have a `mutation` column (case-insensitive). Everythi
 
 Gene names must be defined in the GFF3 (see below). If CDS are included ensure that the `Name` attribute matches the `gene` name used in the annotation table. Nextclade will prefer the `Name` attribute for amino acid mutation prefixes.
 
-- Substitution: `{gene}:{aa}{pos}{aa}` (`S:N87Y`)
-- Deletion: `{gene}:{pos}-` or `{gene}:{aa}{pos}-` (`S:87-` or `S:N87-`)
-- Insertion: `{gene}:{pos}{aa-ins}` (`S:214:EPE`)
-- Stop codon: `{gene}:{aa}{pos}*` or `{gene}:{pos}` (`S:N87*` or `S:87`)
+| Mutation type | Encoding | Example |
+|--------------|----------|---------|
+| Substitution | `{gene}:{aa}{pos}{aa}` | `S:N87Y` |
+| Deletion | `{gene}:{pos}-` or `{gene}:{aa}{pos}-` | `S:87-` or `S:N87-` |
+| Insertion | `{gene}:{pos}{aa-ins}` | `S:214:EPE` |
+| Stop codon | `{gene}:{aa}{pos}*` or `{gene}:{pos}` | `S:N87*` or `S:87` |
 
 ### Wildcard matching `X` (optional)
 
