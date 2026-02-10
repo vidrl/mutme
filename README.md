@@ -20,14 +20,14 @@ You provide:
 - a query sequence file containing the consensus genomes (FASTA)
 
 > [!IMPORTANT]
-`mutme` is intentionally generic and database-agnostic. It does not attempt to
+> `mutme` is intentionally generic and database-agnostic. It does not attempt to
 interpret biological meaning beyond what you encode in your annotation table.
 
 ## Key Features
 
-- Exact string matching against mutation-of-interest tables
-- Supports:
-  - Amino-acid substitutions
+- String matching against mutation-of-interest tables
+- Supports amino-acid mutations:
+  - Substitutions
   - Deletions
   - Insertions
   - Premature stop codons
@@ -44,6 +44,7 @@ interpret biological meaning beyond what you encode in your annotation table.
 - [Annotations Table](#annotations-table)
   - [How to write the annotations table](#how-to-write-the-annotations-table)
   - [Mutation encoding (what goes in the mutation column)](#mutation-encoding-what-goes-in-the-mutation-column)
+  - [Wildcard matching X (optional)](#wildcard-matching-x-optional)
 - [Output Table](#output-table)
 - [Examples](#examples)
   - [I only care if these mutations are present](#i-only-care-if-these-mutations-are-present)
@@ -106,6 +107,26 @@ Gene names must be defined in the GFF3 (see below). If CDS are included ensure t
 - Insertion: `{gene}:{pos}{aa-ins}` (`S:214:EPE`)
 - Stop codon: `{gene}:{aa}{pos}*` or `{gene}:{pos}` (`S:N87*` or `S:87`)
 
+### Wildcard matching `X` (optional)
+
+If enabled, `mutme` can treat `X` in your **annotation table** as a wildcard meaning
+“any single amino acid” when matching against detected Nextclade mutations.
+
+Supported forms (annotation table only):
+
+- Substitution: `{gene}:{ref}{pos}X`, example: `S:N87X` matches `S:N87Y`, `S:N87F`, etc.
+- Insertion: `{gene}:{pos}:{ins}` where `{ins}` may contain one or more `X` characters, example: `S:345:NXY` matches `S:345:NQY`, `S:345:NRY`, etc.
+
+Notes:
+
+- Wildcards apply **only** to substitutions and insertions.
+- Deletions and stop codons are not wildcard-matched.
+- Wildcards are **disabled by default**; enable with `--allow-x-wildcards`.
+- The set of amino-acid characters that `X` can match is configurable via `--x-charset`.
+
+> [!WARNING]
+> Wildcard matching applies only to `X` in annotation-table mutations (e.g. `S:N87X`, `S:345:NXY`). `X` in reference amino acids (such as `S:X87N`) will not act as a wildcard.
+
 ## Output Table
 
 Default output columns (always present):
@@ -157,7 +178,7 @@ S:87-,,"",,Deletion at position 87
 ```
 
 > [!TIP]
-Columns can be floats, ints, strings, or left empty. If you include a comment column, you can choose to carry it into the output with `--include-comments`.
+> Columns can be floats, ints, strings, or left empty. If you include a comment column, you can choose to carry it into the output with `--include-comments`.
 
 #### Output table (example with `--include-comments`)
 
@@ -171,7 +192,7 @@ sample_03,mediocre,S:87-,,"",,Deletion at position 87
 ```
 
 > [!NOTE]
-The output keeps your original columns (and their values) attached to each mutation hit. A sequence with no hits won’t appear in the output unless you choose to emit empty rows (not enabled by default).
+> The output keeps your original columns (and their values) attached to each mutation hit. A sequence with no hits won’t appear in the output unless you choose to emit empty rows (not enabled by default).
 
 ## Command reference
 
@@ -195,7 +216,7 @@ mutme run \
 ```
 
 > [!NOTE]
-Input sequence file `sequences.fasta` may contain **one or many consensus sequences**. Each FASTA record is processed independently and results are distinguished by sequence name in the output table.
+> Input sequence file `sequences.fasta` may contain **one or many consensus sequences**. Each FASTA record is processed independently and results are distinguished by sequence name in the output table.
 
 ---
 
@@ -219,13 +240,16 @@ Either `--reference` + `--gff` or `--nextclade-tsv` must be provided.
 | Option | Description |
 |------|-------------|
 | `--include-comments`, `-c` | Include a `comment` column in output if present in annotation table |
-| `--alignment-preset`, `-p` | Nextclade alignment preset (`default`, `high-diversity`, `short-sequences`) |
-|`--nextclade-threads`, `-t` | Number of threads to use for Nextclade (default: all available) |
+| `--nextclade-preset`, `-p` | Nextclade alignment preset (`default`, `high-diversity`, `short-sequences`) |
+| `--nextclade-threads`, `-t` | Number of threads to use for Nextclade (default: all available) |
 | `--nextclade-extra-args` | Extra arguments passed directly to Nextclade |
 | `--nextclade-keep-tsv` | Keep intermediate Nextclade TSV output |
 | `--nextclade-bin` | Path or name of Nextclade executable (default `nextclade`) |
 | `--annotations-delimiter` | Delimiter used by annotation table (default `,`, use `\t` for TSV) |
 | `--output-delimiter` | Delimiter for output table (default `,`) |
+| `--allow-x-wildcards` | Treat `X` in annotation-table substitutions/insertions as a wildcard for any single amino acid |
+| `--x-charset` | Allowed amino-acid characters that `X` can match when `--allow-x-wildcards` is enabled (default: 20 canonical AAs) |
+
 
 ---
 
@@ -263,7 +287,6 @@ mutme run \
   --annotations-delimiter '\t'
 ```
 
----
 
 #### Example: keep Nextclade output for debugging
 
@@ -276,6 +299,19 @@ mutme run \
   -o results.csv \
   --nextclade-keep-tsv
 ```
+
+#### Example: enable `X` wildcard matching
+
+```bash
+mutme run \
+  --sequences sequences.fasta \
+  --reference reference.fasta \
+  --gff reference.gff3 \
+  --annotations mutations.csv \
+  --output results.csv \
+  --allow-x-wildcards
+```
+
 
 ---
 
