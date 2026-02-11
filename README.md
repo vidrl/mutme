@@ -38,7 +38,7 @@ interpret biological meaning beyond what you encode in your annotation table.
 
 - [Installation](#installation)
   - [Requirements](#requirements)
-  - [Install from source](#install-from-source)
+  - [Install from package index](#install-from-package-index)
   - [Install with dependencies](#install-with-dependencies)
 - [Quick Start](#quick-start)
 - [Annotations Table](#annotations-table)
@@ -62,7 +62,7 @@ interpret biological meaning beyond what you encode in your annotation table.
 - Python >= 3.10
 - Nextclade >= v3.18 installation available on `$PATH`
 
-### Install from source
+### Install from package index
 
 ```bash
 pip install mutme
@@ -70,10 +70,10 @@ pip install mutme
 
 ### Install with dependencies
 
+Latest version available on Anaconda channel with dependencies (`conda/mamba`).
+
 ```bash
-mamba create -n mutme -c conda-forge -c bioconda python=3.14 nextclade=3.18
-mamba activate mutme
-pip install mutme
+mamba install -c conda-forge -c bioconda -c esteinig mutme
 ```
 
 ## Quick Start

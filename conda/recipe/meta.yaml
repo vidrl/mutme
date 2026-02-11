@@ -1,0 +1,29 @@
+{% set name = "mutme" %}
+{% set version = environ.get("MUTME_VERSION", "0.0.0") %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ../..   # build from repo root
+  
+build:
+  number: 0
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv --no-deps
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - setuptools
+    - wheel
+  run:
+    - python >=3.10
+    - nextclade >=3.18
+    - typer >=0.21
+
+test:
+  commands:
+    - mutme --help
