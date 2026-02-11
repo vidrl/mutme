@@ -52,6 +52,8 @@ test = [
 dev = [
   "ruff>=0.15.0",
   "pre-commit>=4.5",
+  "twine>=6.2.0",
+  "build>=1.4.0"
 ]
 
 [project.scripts]

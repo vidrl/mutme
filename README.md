@@ -23,7 +23,7 @@ You provide:
 > `mutme` is intentionally generic and database-agnostic. It does not attempt to
 interpret biological meaning beyond what you encode in your annotation table.
 
-## Key Features
+## Key features
 
 - String matching against mutation-of-interest tables
 - Supports amino-acid mutations:
@@ -34,25 +34,25 @@ interpret biological meaning beyond what you encode in your annotation table.
 - Robust handling of multiple annotation rows per mutation
 - Long-format output suitable for downstream analysis
 
-## Table of Contents
+## Table of contents
 
 - [Installation](#installation)
   - [Requirements](#requirements)
   - [Install from package index](#install-from-package-index)
   - [Install with dependencies](#install-with-dependencies)
-- [Quick Start](#quick-start)
-- [Annotations Table](#annotations-table)
+- [Quick start](#quick-start)
+- [Annotations table](#annotations-table)
   - [How to write the annotations table](#how-to-write-the-annotations-table)
   - [Mutation encoding (what goes in the mutation column)](#mutation-encoding-what-goes-in-the-mutation-column)
   - [Wildcard matching X (optional)](#wildcard-matching-x-optional)
-- [Output Table](#output-table)
+- [Output table](#output-table)
 - [Examples](#examples)
   - [I only care if these mutations are present](#i-only-care-if-these-mutations-are-present)
   - [I want to annotate mutations with mAb susceptibility values](#i-want-to-annotate-mutations-with-mab-susceptibility-values)
 - [Command reference](#command-reference)
   - [mutme run](#mutme-run)
   - [mutme subset-gff3](#mutme-subset-gff3)
-- [External Dependencies](#external-dependencies)
+- [External dependencies](#external-dependencies)
 - [Citation](#citation)
 
 ## Installation
@@ -76,7 +76,7 @@ Latest version available on Anaconda channel with dependencies (`conda/mamba`).
 mamba install -c conda-forge -c bioconda -c esteinig mutme
 ```
 
-## Quick Start
+## Quick start
 
 ```bash
 mutme run \
@@ -92,7 +92,7 @@ Notes:
 - `--sequences` can contain one or many consensus sequences.
 - Output will contain a `seq_name` column so you can see which result belongs to which input sequence.
 
-## Annotations Table
+## Annotations table
 
 ### How to write the annotations table
 
@@ -129,7 +129,7 @@ Notes:
 > [!WARNING]
 > Wildcard matching applies only to `X` in annotation-table mutations (e.g. `S:N87X`, `S:345:NXY`). `X` in reference amino acids (such as `S:X87N`) will not act as a wildcard.
 
-## Output Table
+## Output table
 
 Default output columns (always present):
 
@@ -400,7 +400,7 @@ mutme subset-gff3 \
 
 This prints summary statistics but does not write an output GFF3.
 
-## External Dependencies
+## External dependencies
 
 `mutme` relies on `Nextclade` for sequence alignment and mutation calling.
 
@@ -408,4 +408,4 @@ This prints summary statistics but does not write an output GFF3.
 
 ## Citation
 
-If you use `mutme` in published work, please cite `Nextclade` (see link above) and acknowledge this repository.
+If you use `mutme` in published work, please cite `Nextclade` and acknowledge this repository.
