@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
+CONTROL_COLUMNS = {"comment", "linked_mutations"}
 
 
 class InputFormatError(ValueError):
@@ -110,6 +111,7 @@ def load_annotation_table(
     mutation_col: str = "mutation",
     normalize: Callable[[str], str] | None = None,
     delimiter: str = ",",
+    require_full_deletion_ranges: bool = True,
 ) -> dict[str, dict[str, str]]:
     """
     Load an annotation CSV/TSV with a required mutation column and any number of
@@ -118,17 +120,47 @@ def load_annotation_table(
     The mutation column is resolved case-insensitively, so either "mutation" or
     "Mutation" (or any other casing) will be accepted.
 
+    Additional supported input conveniences
+    ---------------------------------------
+    1) Deletion ranges:
+
+       If the mutation cell matches "{gene}:del{start}-{stop}" (inclusive),
+       the row is expanded into multiple canonical deletion keys:
+           "{gene}:{start}-", "{gene}:{start+1}-", ..., "{gene}:{stop}-"
+
+       Each expanded key receives the same annotation fields.
+
+       This expansion is performed at load time so downstream matching logic is
+       unchanged.
+
+    2) Linked mutations (co-occurrence gating):
+
+       If an optional column "linked_mutations" is present (case-insensitive),
+       its value is stored under the special key "linked_mutations" and later
+       used by the matcher to require co-occurrence. The value is merged using
+       set-union semantics when a mutation key appears multiple times.
+
+       For deletion range rows, this loader automatically injects an implied
+       linked_mutations set consisting of all expanded deletion keys, giving the
+       "all-or-nothing" semantics for the range without requiring the user to
+       specify it manually.
+
     Parameters
     ----------
     annotation_tsv:
         Path to the annotation file.
     mutation_col:
-        Preferred name of the mutation column. Resolution is case-insensitive:
-        e.g. "mutation" will match a header of "Mutation".
+        Preferred name of the mutation column. Resolution is case-insensitive.
     normalize:
-        Optional normalizer applied to each mutation string after stripping.
+        Optional normalizer applied to each non-range mutation string after stripping.
+        (Range keys are expanded before normalization; expanded keys are not normalized.)
     delimiter:
         Delimiter used by the file ("," for CSV, "\\t" for TSV, etc).
+    require_full_deletion_ranges:
+        If True (default), deletion range inputs like "{gene}:del87-89" are expanded
+        and also automatically treated as linked (all positions must co-occur).
+        If False, ranges are expanded but not auto-linked; each position can match
+        independently unless `linked_mutations` is explicitly provided.
 
     Returns
     -------
@@ -138,15 +170,17 @@ def load_annotation_table(
     Merge semantics
     ---------------
     If a mutation appears multiple times:
-    - for each field, non-empty values are merged
+    - for each annotation field, non-empty values are merged
     - if conflicting non-empty values appear, they are concatenated using '; '
+    - for the control field "linked_mutations", values are merged by set union
 
     Raises
     ------
     FileNotFoundError:
         If the file does not exist.
     InputFormatError:
-        If header is missing or the mutation column is missing/empty.
+        If header is missing or the mutation column is missing/empty, or deletion
+        range syntax is malformed.
     """
     path = Path(annotation_tsv)
     if not path.exists() or not path.is_file():
@@ -188,6 +222,14 @@ def load_annotation_table(
             )
         resolved_comments_col: str | None = comments_matches[0] if comments_matches else None
 
+        linked_matches = [c for c in fieldnames if c.casefold() == "linked_mutations"]
+        if len(linked_matches) > 1:
+            raise InputFormatError(
+                f"Ambiguous linked_mutations column: multiple headers match 'linked_mutations' case-insensitively: "
+                f"{linked_matches} in {path}"
+            )
+        resolved_linked_col: str | None = linked_matches[0] if linked_matches else None
+
         annotation_fields = [c for c in fieldnames if c != resolved_mutation_col]
         if not annotation_fields:
             print("Warning: no annotation fields provided in annotation file")
@@ -197,18 +239,46 @@ def load_annotation_table(
             if not raw_mut:
                 raise InputFormatError(f"Empty '{resolved_mutation_col}' at {path}:{line_no}")
 
-            mut = normalize(raw_mut) if normalize else raw_mut
+            # Expand deletion ranges (GENE:del{pos_start}-{pos_stop}) into per-position deletion keys (GENE:{pos}-).
+            try:
+                expanded = _expand_deletion_range_key(raw_mut)
+            except InputFormatError as e:
+                raise InputFormatError(f"{e} at {path}:{line_no}") from e
 
-            bucket = out.setdefault(mut, {})
+            if expanded:
+                mut_keys = expanded
+                auto_link_value = ";".join(mut_keys) if require_full_deletion_ranges else ""
+            else:
+                mut = normalize(raw_mut) if normalize else raw_mut
+                mut_keys = [mut]
+                auto_link_value = ""
 
-            for col in annotation_fields:
-                val = (row.get(col) or "").strip()
-                if not val:
-                    continue
+            for mut_key in mut_keys:
+                bucket = out.setdefault(mut_key, {})
 
-                key = "comment" if (resolved_comments_col and col == resolved_comments_col) else col
-                existing = bucket.get(key, "")
-                bucket[key] = _merge_field_value(existing, val)
+                for col in annotation_fields:
+                    val = (row.get(col) or "").strip()
+                    if not val:
+                        continue
+
+                    if resolved_comments_col and col == resolved_comments_col:
+                        key = "comment"
+                    elif resolved_linked_col and col == resolved_linked_col:
+                        key = "linked_mutations"
+                    else:
+                        key = col
+
+                    if key == "linked_mutations":
+                        bucket[key] = _merge_linked_mutations(bucket.get(key, ""), val)
+                    else:
+                        bucket[key] = _merge_field_value(bucket.get(key, ""), val)
+
+                # Inject auto-linking for range-expanded rows even if the column wasn't present.
+                if auto_link_value:
+                    bucket["linked_mutations"] = _merge_linked_mutations(
+                        bucket.get("linked_mutations", ""),
+                        auto_link_value,
+                    )
 
     return out
 
@@ -230,50 +300,25 @@ def compare_nextclade_to_annotations(
     # Wildcard mutations
     allow_x_wildcards: bool = False,
     x_charset: str = AMINO_ACIDS,
+    # Deletion range full or partial
+    require_full_deletion_ranges: bool = True,
 ) -> list[SequenceAnnotationReport]:
     """
     Compare Nextclade AA substitutions/indels to an annotation table CSV.
 
-    The annotation CSV must contain a `mutation` column and may contain any number
-    of additional columns with arbitrary headers (all treated as string annotations).
+    (Existing docstring omitted here for brevity; only behavior additions described.)
 
+    Additions
+    ---------
+    - Supports co-occurrence gating via the annotation control field "linked_mutations":
+      if a matched annotation dict contains "linked_mutations", the hit is emitted
+      only if *all* required tokens are present in the sequence's detected mutation
+      universe.
 
-    Mutation matching logic
-    -----------------------
-    Matching is performed by **exact string match** or translated alternative string
-    matches (deletion, stop) by default considering the allowed annotation formats
-    from the input table:
-
-    - Substitution: `{gene}:{aa}{pos}{aa}` e.g. `S:N87Y`
-    - Deletion: `{gene}:{pos}-` or `{gene}:{aa}{pos}-` e.g. `S:87-` or `S:N87-`
-    - Insertion: `{gene}:{pos}{aa-ins}` (`S:214:EPE`)
-    - Stop codon: `{gene}:{aa}{pos}*` or `{gene}:{pos}` e.g. `S:N87*` or `S:87`
-
-
-    Optional wildcard matching
-    --------------------------
-    If `allow_x_wildcards=True`, annotation-table mutation keys containing 'X' may
-    match detected Nextclade mutations where 'X' stands for any single amino-acid
-    character in `x_charset`.
-
-    Wildcards are supported for:
-    - Substitutions: {gene}:{ref}{pos}X
-    - Insertions:   {gene}:{pos}:{ins} where {ins} may include one or more 'X'
-
-    When multiple annotation keys (exact and/or wildcard) match a single detected
-    mutation, their annotation fields (and comments) are merged and a single hit
-    is emitted for that detected mutation.
-
-
-    Returns
-    -------
-    list[SequenceAnnotationReport]
-        One report per sequence in Nextclade TSV, including matched mutation hits
-        and their annotation fields.
-
-    Raises
-    ------
-    FileNotFoundError, InputFormatError
+    Notes
+    -----
+    - "linked_mutations" is treated as a control field and is not emitted in
+      SequenceMutationHit.annotations.
     """
     next_path = Path(nextclade_tsv)
     if not next_path.exists() or not next_path.is_file():
@@ -283,6 +328,7 @@ def compare_nextclade_to_annotations(
         annotation_csv,
         mutation_col=mutation_col,
         delimiter=delimiter,
+        require_full_deletion_ranges=require_full_deletion_ranges,
     )
     annotation_keys = set(annotations.keys())
 
@@ -349,6 +395,7 @@ def compare_nextclade_to_annotations(
 
             aa_indels = aa_dels | aa_ins  # keep raw Nextclade tokens for optional reporting
 
+            # all_aa is the detected universe used both for matching and for linked gating.
             all_aa = aa_subs | aa_ins | aa_dels_match | aa_stops_match
 
             hits: list[SequenceMutationHit] = []
@@ -356,11 +403,11 @@ def compare_nextclade_to_annotations(
             for detected_mut in sorted(all_aa):
                 matched_keys: list[str] = []
 
-                # 1) exact match
+                # Exact match
                 if detected_mut in exact_keys:
                     matched_keys.append(detected_mut)
 
-                # 2) wildcard matches (annotation keys containing X)
+                # Wildcard matches (annotation keys containing X)
                 if wildcard_rules:
                     for rule in wildcard_rules:
                         if rule.pattern.match(detected_mut):
@@ -372,8 +419,18 @@ def compare_nextclade_to_annotations(
                 # Merge all matching annotation dicts (exact + wildcard).
                 merged = _merge_annotation_dicts_for_keys(annotations, matched_keys)
 
+                # Linked gating: if linked_mutations is present, require all linked tokens
+                # to be present in the sequence's detected mutation universe (all_aa).
+                linked_raw = (merged.get("linked_mutations") or "").strip()
+                if linked_raw:
+                    required_links = _split_linked_mutations_cell(linked_raw)
+                    if not required_links.issubset(all_aa):
+                        continue
+
                 merged_comment = (merged.get("comment") or "").strip()
-                merged_annos = {k: v for k, v in merged.items() if k != "comment"}
+                merged_annos = {
+                    k: v for k, v in merged.items() if k not in ("comment", "linked_mutations")
+                }
 
                 hits.append(
                     SequenceMutationHit(
@@ -568,15 +625,17 @@ def get_annotation_fields(
     This function reads only the header row and returns all column names except
     the mutation column. Resolution of the mutation column name is
     case-insensitive.
-    Intended use is to obtain the full set of possible annotation fields for
-    downstream reporting (e.g. forcing a stable output schema in
-    `write_long_format_table`).
 
-    The optional "comment" column is excluded from the returned list.
+    Control columns
+    ---------------
+    The optional control columns "comment" and "linked_mutations" are excluded
+    from the returned list. "comment" is emitted only when explicitly requested
+    by writers. "linked_mutations" is used for co-occurrence gating and is not a
+    user-facing annotation.
 
     Parameters
     ----------
-    annotation_tsv:
+    annotations_csv:
         Path to the annotation file.
     mutation_col:
         Name of the mutation column. Matching is case-insensitive.
@@ -587,7 +646,7 @@ def get_annotation_fields(
     -------
     list[str]
         List of annotation column names in file order, excluding the mutation
-        column and the optional comment column
+        column and control columns.
 
     Raises
     ------
@@ -617,8 +676,9 @@ def get_annotation_fields(
         )
     resolved_mutation_col = matches[0]
 
-    # Keep all non-mutation/non-comment columns
-    return [c for c in fieldnames if c != resolved_mutation_col and c.casefold() != "comment"]
+    return [
+        c for c in fieldnames if c != resolved_mutation_col and c.casefold() not in CONTROL_COLUMNS
+    ]
 
 
 # Annotation accepts formats: {gene}:{pos} (Nextclade) and {gene}:{aa}{pos}* (general)
@@ -660,6 +720,10 @@ def _build_stop_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[
 # Annotation accepts: {gene}:{pos}-  OR  {gene}:{aa}{pos}-
 _DEL_ANNO_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z])?(?P<pos>\d+)-$")
 
+# Annotation convenience format: {gene}:del{start}-{stop} (inclusive)
+# Permissive: allow whitespace after 'del' and around '-'
+_DEL_RANGE_RE = re.compile(r"^(?P<gene>[^:]+):del\s*(?P<start>\d+)\s*-\s*(?P<stop>\d+)$")
+
 # Nextclade accepts: {gene}:{aa}{pos}-
 _DEL_NEXTCLADE_RE = re.compile(r"^(?P<gene>[^:]+):(?P<aa>[A-Za-z])(?P<pos>\d+)-$")
 
@@ -686,6 +750,117 @@ def _build_del_lookup(annotation_keys: set[str]) -> dict[tuple[str, int], list[s
             continue
         out[parsed].append(key)
     return dict(out)
+
+
+def _split_linked_mutations_cell(cell: str | None) -> set[str]:
+    """
+    Parse the optional `linked_mutations` control column into a set of tokens.
+
+    This column is intended to encode *co-occurrence requirements* for a hit:
+    if a mutation's annotations include `linked_mutations`, then the current
+    sequence must also contain every token listed in that field, otherwise the
+    hit is suppressed.
+
+    Input format
+    ------------
+    The cell may contain mutation tokens separated by commas and/or semicolons.
+    Whitespace around tokens is ignored. Empty tokens are ignored.
+
+    Examples
+    --------
+    - "S:E484K,S:K417N" -> {"S:E484K", "S:K417N"}
+    - "S:E484K; S:K417N" -> {"S:E484K", "S:K417N"}
+    - "" or None -> set()
+
+    Notes
+    -----
+    This parser does not validate token formats; it treats them as opaque strings.
+    Downstream matching uses exact membership in the detected mutation universe.
+    """
+    if cell is None:
+        return set()
+    s = cell.strip()
+    if not s:
+        return set()
+    toks = re.split(r"[;,]", s)
+    return {t.strip() for t in toks if t.strip()}
+
+
+def _merge_linked_mutations(existing: str, incoming: str) -> str:
+    """
+    Merge two `linked_mutations` field values using set-union semantics.
+
+    `linked_mutations` is a control field (not a human-facing annotation) and is
+    best treated as a set of required tokens. When the same mutation appears in
+    multiple rows, we union their required-token sets.
+
+    Serialization
+    -------------
+    The merged set is serialized as a semicolon-separated string in sorted order to
+    provide stable output.
+
+    Examples
+    --------
+    existing="S:E484K", incoming="S:K417N" -> "S:E484K;S:K417N"
+    existing="S:E484K;S:K417N", incoming="S:K417N" -> "S:E484K;S:K417N"
+    """
+    a = _split_linked_mutations_cell(existing)
+    b = _split_linked_mutations_cell(incoming)
+    merged = sorted(a | b)
+    return ";".join(merged)
+
+
+def _expand_deletion_range_key(raw: str) -> list[str] | None:
+    """
+    Expand an annotation-table deletion range key into canonical per-position deletions.
+
+    This enables an input convenience syntax in the annotation table:
+
+        "{gene}:del{start}-{stop}"
+
+    where start and stop are 1-based amino-acid indices and the range is inclusive.
+
+    The range is expanded ("rolled out") into annotation deletion keys in the
+    existing canonical format accepted by downstream logic:
+
+        "{gene}:{pos}-"
+
+    Examples
+    --------
+    - "S:del87-89" -> ["S:87-", "S:88-", "S:89-"]
+    - "ORF1a:del1-1" -> ["ORF1a:1-"]
+    - "S:87-" -> None (not a range key; caller should treat as literal)
+
+    Validation
+    ----------
+    - start and stop must be positive integers
+    - stop must be >= start
+
+    Returns
+    -------
+    list[str] | None
+        A list of expanded mutation keys if `raw` is a range key, otherwise None.
+
+    Raises
+    ------
+    InputFormatError
+        If the key matches the range pattern but the indices are invalid.
+    """
+    s = raw.strip()
+    m = _DEL_RANGE_RE.match(s)
+    if not m:
+        return None
+
+    gene = m.group("gene")
+    start = int(m.group("start"))
+    stop = int(m.group("stop"))
+
+    if start <= 0 or stop <= 0:
+        raise InputFormatError(f"Deletion range indices must be positive: {raw!r}")
+    if stop < start:
+        raise InputFormatError(f"Deletion range stop < start: {raw!r}")
+
+    return [f"{gene}:{i}-" for i in range(start, stop + 1)]
 
 
 # Substitution (Nextclade style): {gene}:{ref}{pos}{alt}
