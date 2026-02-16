@@ -45,6 +45,8 @@ interpret biological meaning beyond what you encode in your annotation table.
   - [How to write the annotations table](#how-to-write-the-annotations-table)
   - [Mutation encoding (what goes in the mutation column)](#mutation-encoding-what-goes-in-the-mutation-column)
   - [Wildcard matching X (optional)](#wildcard-matching-x-optional)
+  - [Deletion ranges (optional)](#deletion-ranges-optional)
+  - [Linked mutations (optional)](#linked-mutations-optional)
 - [Output table](#output-table)
 - [Examples](#examples)
   - [I only care if these mutations are present](#i-only-care-if-these-mutations-are-present)
@@ -96,23 +98,26 @@ Notes:
 
 ### How to write the annotations table
 
-Your annotation table must have a `mutation` column (case-insensitive). Everything else is optional — add as many extra columns as you like. One special case is a `comment` column, which can contain e.g. links to the mutation phenotype study. 
+Your annotation table must have a `mutation` column (case-insensitive). Everything else is optional — add as many extra columns as you like. Two special cases exist:
+
+- a `comment` column, which can contain e.g. links to the mutation phenotype study or database information
+- a `linked_mutations` column, which can contain required co-occurring mutations for a mutation-of-interest
 
 ### Mutation encoding (what goes in the mutation column)
 
-Gene names must be defined in the GFF3 (see below). If CDS are included ensure that the `Name` attribute matches the `gene` name used in the annotation table. Nextclade will prefer the `Name` attribute for amino acid mutation prefixes.
+Gene names must be defined in the GFF3 (see below). If CDS are included, ensure that the `Name` attribute matches the `gene` name used in the annotation table. Nextclade will prefer the `Name` attribute for amino acid mutation prefixes.
 
 | Mutation type | Encoding | Example |
 |--------------|----------|---------|
 | Substitution | `{gene}:{aa}{pos}{aa}` | `S:N87Y` |
-| Deletion | `{gene}:{pos}-` or `{gene}:{aa}{pos}-` | `S:87-` or `S:N87-` |
+| Deletion | `{gene}:{pos}-` or `{gene}:{aa}{pos}-` or `{gene}:del{start}-{stop}` | `S:87-` or `S:N87-` or `S:del87-99` |
 | Insertion | `{gene}:{pos}{aa-ins}` | `S:214:EPE` |
 | Stop codon | `{gene}:{aa}{pos}*` or `{gene}:{pos}` | `S:N87*` or `S:87` |
 
+
 ### Wildcard matching `X` (optional)
 
-If enabled, `mutme` can treat `X` in your **annotation table** as a wildcard meaning
-“any single amino acid” when matching against detected Nextclade mutations.
+If enabled, `mutme` can treat `X` in your **annotation table** as a wildcard meaning “any single amino acid” when matching against detected Nextclade mutations.
 
 Supported forms (annotation table only):
 
@@ -129,15 +134,130 @@ Notes:
 > [!WARNING]
 > Wildcard matching applies only to `X` in annotation-table mutations (e.g. `S:N87X`, `S:345:NXY`). `X` in reference amino acids (such as `S:X87N`) will not act as a wildcard.
 
+### Deletion ranges (optional)
+
+In addition to single-position deletions, `mutme` supports a convenience syntax for specifying **contiguous deletion ranges** in the annotation table.
+
+#### Syntax
+
+`{gene}:del{start}-{stop}`
+
+- `{start}` and `{stop}` are inclusive amino-acid indices (1-based).
+- The range is expanded internally into individual deletion positions.
+- Full deletion ranges are **enabled by default**; disable with `--no-require-full-del-ranges`
+- Output rows correspond to individual deletion positions, not a single collapsed range.
+
+#### Annotation table
+
+```csv
+mutation,phenotype
+S:del87-89,Important deletion region
+```
+
+This is internally expanded to:
+
+- `S:87-`
+- `S:88-`
+- `S:89-`
+
+You do **not** need to write these individually.
+
+#### Full-range requirement
+
+By default, deletion ranges are treated as **linked**: All positions in the range must be deleted for the annotation to match.
+
+For example:
+
+- If a sequence contains only `S:N87-` = **no match**
+- If a sequence contains `S:N87-` and `S:N88-` and `S:N89-` all three deletion positions are reported as matches
+
+This behavior can be disabled with `--no-require-full-del-ranges`. When disabled, range rows are still expanded, but each deletion position can match independently. 
+
+### Linked mutations (optional)
+
+The annotation table may optionally contain a column named:
+
+```csv
+linked_mutations
+```
+
+This column allows you to require that **additional mutations must be present** in the same sequence for a given annotation row to match.
+
+#### Syntax
+
+- Mutations are semicolon-separated (`;`).
+- All listed mutations must be present.
+- Matching is based on exact mutation strings (as detected by Nextclade and normalized by `mutme`).
+
+#### Example:
+
+```csv
+mutation,phenotype,linked_mutations
+S:E484K,Escape mutation,S:K417N;S:N501Y
+```
+
+This means: `S:E484K` will only be reported if BOTH `S:K417N` AND `S:N501Y` are also present.
+
+
+#### Important: Multiple rows for the same mutation
+
+If the same mutation appears multiple times in the annotation table, `mutme` merges (unions) all linked mutations across rows.
+
+#### Example
+
+```csv
+mutation,phenotype,linked_mutations
+S:E484K,Escape,S:K417N
+S:E484K,Escape,S:N501Y
+```
+
+Internally, the logic becomes: `S:E484K` requires: `S:K417N` **AND** `S:N501Y`
+
+>[!WARNING]:
+> Multiple rows for the same mutation do NOT create alternative requirements. Instead, their `linked_mutations` are merged (unioned) into a single combined requirement.
+
+- If only `S:K417N` is present = **no match**
+- If only `S:N501Y` is present = **no match**
+
+This means for now:
+
+- You cannot express “either A or B” by adding two rows of the same target mutation with different linked mutations
+- All linked mutations across duplicate rows must co-occur for a match to be output.
+
+If you need alternative logic you must encode that outside of `mutme` or restructure your annotation table accordingly. Currently only AND semantics are supported. OR or XOR logic is not implemented. Additional semantics for linked mutation logic will be introduced in the next version.
+
+#### Interaction with deletion ranges
+
+Deletion ranges automatically generate a linked requirement when full-rangemode is enabled (default).
+
+For example:
+
+```csv
+mutation,phenotype
+S:del87-89,Important deletion region
+```
+
+Internally expands to:
+
+- `S:87-`
+- `S:88-`
+- `S:89-`
+
+and behaves as if `linked_mutations` was `S:87-;S:88-;S:89-`. Thus, partial deletions within the range will not trigger the annotation unless all positions in the range are deleted (unless `--no-require-full-del-ranges` is used). 
+
+Important: 
+
+Only ranges matching `{gene}:del{start}-{stop}` (with permissive whitespace, e.g. `S:del87 - 89`) are treated as ranges. Other `del` strings (`S:delA-B`) are treated as literal mutation keys and will not appear in outpouts as they are not conforming to the standard mutation annotation formnat.
+
 ## Output table
 
 Default output columns (always present):
 
 - `seq_name` - the FASTA record name (so multiple sequences are kept separate)
-- `seq_quality` - Nextclade QC overall status
+- `seq_quality` - Nextclade overall QC status
 - `mutation` - the matched mutation from your annotation table
 
-If your annotation table has extra columns, those columns are included too.
+If your annotation table has extra genotype/phenotype columns, those columns are included. Mutation matching is independent of Nextclade QC status; mutations are reported even for sequences with poor QC.
 
 ## Examples
 
@@ -252,7 +372,7 @@ Either `--reference` + `--gff` or `--nextclade-tsv` must be provided.
 | `--output-delimiter` | Delimiter for output table (default `,`) |
 | `--allow-x-wildcards` | Treat `X` in annotation-table substitutions/insertions as a wildcard for any single amino acid |
 | `--x-charset` | Allowed amino-acid characters that `X` can match when `--allow-x-wildcards` is enabled (default: 20 canonical AAs) |
-
+| `--no-require-full-del-ranges` | Do not require all positions in a deletion range to be present for a match (default: enabled) |
 ---
 
 #### Example: running Nextclade with limited threads

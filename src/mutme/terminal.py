@@ -173,6 +173,17 @@ def run(
             "Default is the 20 canonical amino acids."
         ),
     ),
+    require_full_del_ranges: bool = typer.Option(
+        True,
+        "--require-full-del-ranges/--no-require-full-del-ranges",
+        help=(
+            "If enabled (default), deletion ranges in the annotations table like "
+            "'S:del87-89' are expanded and treated as linked (all deletions in the range "
+            "must co-occur for any to match). If disabled, ranges are expanded but each "
+            "deletion position can match independently unless 'linked_mutations' is provided."
+        ),
+        show_default=True,
+    ),
     nextclade_bin: str = typer.Option(
         "nextclade", "--nextclade-bin", help="Nextclade executable", show_default=True
     ),
@@ -246,6 +257,7 @@ def run(
         delimiter=_parse_delimiter(annotations_delimiter),
         allow_x_wildcards=allow_x_wildcards,
         x_charset=x_charset,
+        require_full_deletion_ranges=require_full_del_ranges,
     )
 
     annotation_fields = (
