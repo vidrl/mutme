@@ -198,7 +198,6 @@ S:E484K,Escape mutation,S:K417N;S:N501Y
 
 This means: `S:E484K` will only be reported if BOTH `S:K417N` AND `S:N501Y` are also present.
 
-
 #### Important: Multiple rows for the same mutation
 
 If the same mutation appears multiple times in the annotation table, `mutme` merges (unions) all linked mutations across rows.
@@ -213,7 +212,7 @@ S:E484K,Escape,S:N501Y
 
 Internally, the logic becomes: `S:E484K` requires: `S:K417N` **AND** `S:N501Y`
 
->[!WARNING]:
+> [!WARNING]:
 > Multiple rows for the same mutation do NOT create alternative requirements. Instead, their `linked_mutations` are merged (unioned) into a single combined requirement.
 
 - If only `S:K417N` is present = **no match**
