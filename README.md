@@ -220,10 +220,10 @@ Internally, the logic becomes: `S:E484K` requires: `S:K417N` **AND** `S:N501Y`
 
 This means for now:
 
-- You cannot express “either A or B” by adding two rows of the same target mutation with different linked mutations
 - All linked mutations across duplicate rows must co-occur for a match to be output.
+- You cannot express “either `S:E484K` with `S:K417N` or `S:E484K` with `S:N501Y`”.
 
-If you need alternative logic you must encode that outside of `mutme` or restructure your annotation table accordingly. Currently only AND semantics are supported. OR or XOR logic is not implemented. Additional semantics for linked mutation logic will be introduced in the next version.
+Currently only `AND` semantics are supported. `OR` or `XOR` logic is not implemented. Additional semantics for linked mutation logic will be introduced in the next version.
 
 #### Interaction with deletion ranges
 
