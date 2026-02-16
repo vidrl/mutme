@@ -244,9 +244,8 @@ Internally expands to:
 
 and behaves as if `linked_mutations` was `S:87-;S:88-;S:89-`. Thus, partial deletions within the range will not trigger the annotation unless all positions in the range are deleted (unless `--no-require-full-del-ranges` is used). 
 
-Important: 
-
-Only ranges matching `{gene}:del{start}-{stop}` (with permissive whitespace, e.g. `S:del87 - 89`) are treated as ranges. Other `del` strings (`S:delA-B`) are treated as literal mutation keys and will not appear in outpouts as they are not conforming to the standard mutation annotation formnat.
+> [!IMPORTANT]
+> Only ranges matching `{gene}:del{start}-{stop}` are treated as ranges (with permissive whitespace, e.g. `S:del87 - 89`). Other `del` strings (e.g. `S:delA-B`) are treated as literal mutation keys and will generally not appear in outputs unless they are not conforming to the [standard mutation annotation format](#mutation-encoding-what-goes-in-the-mutation-column).
 
 ## Output table
 
