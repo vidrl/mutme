@@ -91,14 +91,14 @@ mutme run \
 
 Notes:
 
-- `--sequences` can contain one or many consensus sequences.
-- Output will contain a `seq_name` column so you can see which result belongs to which input sequence.
+- `--sequences` can contain one or many consensus sequences
+- Output will contain a `seq_name` column so you can see which result belongs to which input sequence
 
 ## Annotations table
 
 ### How to write the annotations table
 
-Your annotation table must have a `mutation` column (case-insensitive). Everything else is optional — add as many extra columns as you like. Two special cases exist:
+Your annotation table must have a `mutation` column (case-insensitive). Everything else is optional, add as many extra columns as you like. Two special cases exist:
 
 - a `comment` column, which can contain e.g. links to the mutation phenotype study or database information
 - a `linked_mutations` column, which can contain required co-occurring mutations for a mutation-of-interest
@@ -126,10 +126,10 @@ Supported forms (annotation table only):
 
 Notes:
 
-- Wildcards apply **only** to substitutions and insertions.
-- Deletions and stop codons are not wildcard-matched.
-- Wildcards are **disabled by default**; enable with `--allow-x-wildcards`.
-- The set of amino-acid characters that `X` can match is configurable via `--x-charset`.
+- Wildcards apply **only** to substitutions and insertions
+- Deletions and stop codons are not wildcard-matched
+- Wildcards are **disabled by default**; enable with `--allow-x-wildcards`
+- The set of amino-acid characters that `X` can match is configurable via `--x-charset`
 
 > [!WARNING]
 > Wildcard matching applies only to `X` in annotation-table mutations (e.g. `S:N87X`, `S:345:NXY`). `X` in reference amino acids (such as `S:X87N`) will not act as a wildcard.
@@ -142,10 +142,10 @@ In addition to single-position deletions, `mutme` supports a convenience syntax 
 
 `{gene}:del{start}-{stop}`
 
-- `{start}` and `{stop}` are inclusive amino-acid indices (1-based).
-- The range is expanded internally into individual deletion positions.
+- `{start}` and `{stop}` are inclusive amino-acid indices (1-based)
+- The range is expanded internally into individual deletion positions
 - Full deletion ranges are **enabled by default**; disable with `--no-require-full-del-ranges`
-- Output rows correspond to individual deletion positions, not a single collapsed range.
+- Output rows correspond to individual deletion positions, not a single collapsed range
 
 #### Annotation table
 
@@ -185,9 +185,9 @@ This column allows you to require that **additional mutations must be present** 
 
 #### Syntax
 
-- Mutations are semicolon-separated (`;`).
-- All listed mutations must be present.
-- Matching is based on exact mutation strings (as detected by Nextclade and normalized by `mutme`).
+- Mutations are semicolon-separated (`;`)
+- All listed mutations must be present
+- Matching is based on exact mutation strings (as detected by Nextclade and normalized by `mutme`)
 
 #### Example:
 
