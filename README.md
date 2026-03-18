@@ -220,8 +220,8 @@ Internally, the logic becomes: `S:E484K` requires: `S:K417N` **AND** `S:N501Y`
 
 This means for now:
 
-- All linked mutations across duplicate rows must co-occur for a match to be output.
-- You cannot express “either `S:E484K` with `S:K417N` or `S:E484K` with `S:N501Y`”.
+- All linked mutations across duplicate rows must co-occur for a match to be output
+- You cannot express “either `S:E484K` with `S:K417N` or `S:E484K` with `S:N501Y`”
 
 Currently only `AND` semantics are supported. `OR` or `XOR` logic is not implemented. Additional semantics for linked mutation logic will be introduced in the next version.
 
